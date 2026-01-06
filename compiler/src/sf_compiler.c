@@ -7,8 +7,6 @@
 #include <string.h>
 #include <stdarg.h>
 
-// Note: Logic moved to sub-modules (sf_json_parser.c, sf_semantics.c, sf_codegen.c)
-
 // --- Diagnostics ---
 
 void sf_compiler_diag_init(sf_compiler_diag* diag, sf_arena* arena) {
@@ -34,41 +32,28 @@ void sf_compiler_diag_report(sf_compiler_diag* diag, sf_source_loc loc, const ch
     SF_LOG_ERROR("%s:%u:%u: error: %s", loc.file ? loc.file : "unknown", loc.line, loc.column, err->message);
 }
 
+#include <stdarg.h>
+
+// Forward declarations of generated pipeline
+extern const sf_pipeline_pass_def SF_COMPILER_PIPELINE[];
+extern const size_t SF_COMPILER_PIPELINE_COUNT;
+
 // --- Compilation ---
 
 sf_program* sf_compile(sf_graph_ir* ir, sf_arena* arena, sf_compiler_diag* diag) {
-    // 0. Optimizations
-    if (!sf_pass_fuse(ir, diag)) {
-        return NULL;
-    }
+    sf_pass_ctx ctx = {0};
+    ctx.ir = ir;
+    ctx.arena = arena;
 
-    // 1. Sort
-    size_t sorted_count = 0;
-    sf_ir_node** sorted = sf_topo_sort(ir, arena, &sorted_count);
-    if (!sorted) {
-        sf_source_loc loc = {0};
-        sf_compiler_diag_report(diag, loc, "Cycle detected in graph or sorting failed.");
-        return NULL; 
-    }
-
-    // 2. Static Analysis (Types & Shapes)
-    if (!sf_pass_analyze(ir, sorted, sorted_count, diag)) {
-        return NULL;
-    }
-
-    // 2.5 Strict Architectural Validation
-    if (!sf_pass_validate(ir, sorted, sorted_count, diag)) {
-        return NULL;
-    }
-
-    // 2a. Register Allocation (Liveness Analysis)
-    if (!sf_pass_liveness(ir, sorted, sorted_count, diag)) {
-        return NULL;
-    }
-
-    // 2b. Domain Splitting (Multi-Domain Support)
-    if (!sf_pass_domain_split(ir, diag)) {
-        return NULL;
+    // Execute Declarative Pipeline
+    for (size_t i = 0; i < SF_COMPILER_PIPELINE_COUNT; ++i) {
+        const sf_pipeline_pass_def* pass = &SF_COMPILER_PIPELINE[i];
+        SF_LOG_DEBUG("Running pass: %s", pass->name);
+        
+        if (!pass->func(&ctx, diag)) {
+            SF_LOG_ERROR("Pass '%s' failed", pass->name);
+            return NULL;
+        }
     }
 
     // 3. Allocate Program Structure
@@ -76,7 +61,7 @@ sf_program* sf_compile(sf_graph_ir* ir, sf_arena* arena, sf_compiler_diag* diag)
     memset(&prog->meta, 0, sizeof(sf_bin_header));
 
     // 4. Emit Code (Tensors, Instructions, State)
-    if (!sf_codegen_emit(prog, ir, sorted, sorted_count, arena)) {
+    if (!sf_codegen_emit(prog, ir, ctx.sorted_nodes, ctx.sorted_count, arena)) {
         sf_source_loc loc = {0};
         sf_compiler_diag_report(diag, loc, "Code generation failed.");
         return NULL;

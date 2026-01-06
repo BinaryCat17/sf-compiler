@@ -5,9 +5,23 @@
  * Automatically generated from isa.json. DO NOT EDIT.
  */
 
+{% for node in nodes %}
+{% set constraints = compiler.node_constraints.get(node.id, {}) -%}
+{% set assertions = constraints.get('assertions', []) -%}
+{% if assertions %}
+static const sf_op_assert SF_ASSERTIONS_{{ node.id }}[] = {
+    {%- for a in assertions %}
+    { SF_ASSERT_{{ a.type }}, {{ a.p0 | default(0) }}, {{ a.a0 | default(0) }}, {{ a.p1 | default(0) }}, {{ a.a1 | default(0) }}, "{{ a.msg | default('') }}" }{%- if not loop.last %}, {% endif %}
+    {%- endfor %}
+};
+{% endif %}
+{% endfor %}
+
 const sf_op_metadata SF_OP_METADATA[SF_NODE_COUNT] = {
     [SF_NODE_UNKNOWN] = { "Unknown", 0, SF_OP_CAT_SPECIAL, SF_STRATEGY_DEFAULT, 0, 0, 0, 0, SF_ACCESS_SPECIAL, {NULL, NULL, NULL, NULL}, 0 },
 {% for node in nodes %}
+{% set constraints = compiler.node_constraints.get(node.id, {}) -%}
+{% set assertions = constraints.get('assertions', []) -%}
     [SF_NODE_{{ node.id }}] = {
         "{{ node.name }}",
         SF_OP_{{ node.opcode }},
@@ -24,7 +38,17 @@ const sf_op_metadata SF_OP_METADATA[SF_NODE_COUNT] = {
             {%- if i < 3 -%}, {% endif -%}
             {%- endfor -%}
         },
-        {{ node.inputs|length }}
+        {{ node.inputs|length }},
+        {{ constraints.get('min_rank', -1) }},
+        {{ constraints.get('max_rank', -1) }},
+        {% set cflags = constraints.get('flags', []) -%}
+        {% if cflags -%}
+            {%- for f in cflags -%}SF_OP_FLAG_{{ f }}{%- if not loop.last %} | {% endif -%}{%- endfor -%}
+        {%- else -%}
+            0
+        {%- endif %},
+        {% if assertions %}SF_ASSERTIONS_{{ node.id }}{% else %}NULL{% endif %},
+        {{ assertions | length }}
     },
 {%- endfor %}
 };

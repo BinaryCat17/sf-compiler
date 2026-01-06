@@ -44,7 +44,8 @@ static void mark_domain(sf_graph_ir* ir, u32 node_idx, u32 domain_idx) {
     }
 }
 
-bool sf_pass_domain_split(sf_graph_ir* ir, sf_compiler_diag* diag) {
+bool sf_pass_domain_split(sf_pass_ctx* ctx, sf_compiler_diag* diag) {
+    sf_graph_ir* ir = ctx->ir;
     if (!ir) {
         SF_REPORT(diag, NULL, "Domain Split Pass: IR is NULL");
         return false;

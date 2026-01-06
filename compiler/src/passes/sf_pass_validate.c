@@ -17,7 +17,10 @@ static bool is_scalar(const sf_type_info* info) {
     return (info->ndim == 0 || (info->ndim == 1 && info->shape[0] == 1));
 }
 
-bool sf_pass_validate(sf_graph_ir* ir, sf_ir_node** sorted_nodes, size_t count, sf_compiler_diag* diag) {
+bool sf_pass_validate(sf_pass_ctx* ctx, sf_compiler_diag* diag) {
+    sf_graph_ir* ir = ctx->ir;
+    sf_ir_node** sorted_nodes = ctx->sorted_nodes;
+    size_t count = ctx->sorted_count;
     bool success = true;
 
     for (size_t i = 0; i < count; ++i) {
@@ -38,7 +41,6 @@ bool sf_pass_validate(sf_graph_ir* ir, sf_ir_node** sorted_nodes, size_t count, 
                 continue;
             }
 
-            // Check if input dtype matches operation's mask
             u32 type_bit = (1 << inputs[k]->out_info.dtype);
             if (!(meta->input_mask & type_bit)) {
                 SF_REPORT_NODE(diag, node, "Type Mismatch: Input '%s' of node '%s' has invalid dtype. Operation '%s' expects mask 0x%X",
@@ -47,58 +49,57 @@ bool sf_pass_validate(sf_graph_ir* ir, sf_ir_node** sorted_nodes, size_t count, 
             }
         }
 
-        // 2. Shape-Rule Specific Validation
-        const sf_type_info* info1 = inputs[0] ? &inputs[0]->out_info : NULL;
-        const sf_type_info* info2 = inputs[1] ? &inputs[1]->out_info : NULL;
+        // 2. Rank Validation
+        if (inputs[0]) {
+            i8 rank = inputs[0]->out_info.ndim;
+            if (meta->min_rank != -1 && rank < meta->min_rank) {
+                SF_REPORT_NODE(diag, node, "Rank Error: Operation '%s' requires minimum rank %d, but got %d", meta->name, meta->min_rank, rank);
+                success = false;
+            }
+            if (meta->max_rank != -1 && rank > meta->max_rank) {
+                SF_REPORT_NODE(diag, node, "Rank Error: Operation '%s' allows maximum rank %d, but got %d", meta->name, meta->max_rank, rank);
+                success = false;
+            }
+        }
 
-        switch (meta->shape_rule) {
-            case SF_SHAPE_BROADCAST:
-                if (info1 && info2) {
-                    if (!is_scalar(info1) && !is_scalar(info2) && !shapes_match(info1, info2)) {
-                        char s1[64], s2[64];
-                        sf_shape_format(info1, s1, sizeof(s1));
-                        sf_shape_format(info2, s2, sizeof(s2));
-                        SF_REPORT_NODE(diag, node, "Shape Mismatch: Cannot broadcast inputs of node '%s' (%s vs %s)", node->id, s1, s2);
-                        success = false;
-                    }
+        // 3. Declarative Assertions
+        for (u8 a = 0; a < meta->assertion_count; ++a) {
+            const sf_op_assert* asrt = &meta->assertions[a];
+            
+            if (asrt->type == SF_ASSERT_MATCH_DIM) {
+                if (!inputs[asrt->p0] || !inputs[asrt->p1]) continue;
+                
+                const sf_type_info* info0 = &inputs[asrt->p0]->out_info;
+                const sf_type_info* info1 = &inputs[asrt->p1]->out_info;
+                
+                int axis0 = (asrt->a0 < 0) ? (info0->ndim + asrt->a0) : asrt->a0;
+                int axis1 = (asrt->a1 < 0) ? (info1->ndim + asrt->a1) : asrt->a1;
+                
+                if (axis0 < 0 || axis0 >= info0->ndim || axis1 < 0 || axis1 >= info1->ndim) {
+                     SF_REPORT_NODE(diag, node, "Validation Error: Axis out of bounds in assertion for '%s'", node->id);
+                     success = false;
+                     continue;
                 }
-                break;
-
-            case SF_SHAPE_SAME_AS_S1:
-                if (info1 && !shapes_match(&node->out_info, info1)) {
-                    char s_out[64], s_in[64];
-                    sf_shape_format(&node->out_info, s_out, sizeof(s_out));
-                    sf_shape_format(info1, s_in, sizeof(s_in));
-                    SF_REPORT_NODE(diag, node, "Shape Error: Output of '%s' must match Input 1 (%s vs %s)", node->id, s_out, s_in);
+                
+                if (info0->shape[axis0] != info1->shape[axis1]) {
+                    SF_REPORT_NODE(diag, node, "Validation Error: %s in '%s' (%d vs %d)", 
+                        asrt->msg[0] ? asrt->msg : "Dimension mismatch", node->id, info0->shape[axis0], info1->shape[axis1]);
                     success = false;
                 }
-                break;
-
-            case SF_SHAPE_MATMUL:
-                if (info1 && info2) {
-                    if (info1->ndim < 2 || info2->ndim < 2) {
-                        SF_REPORT_NODE(diag, node, "MatMul Error: Inputs must be at least 2D in '%s' (got %dD and %dD)", node->id, info1->ndim, info2->ndim);
-                        success = false;
-                    } else if (info1->shape[1] != info2->shape[0]) {
-                        SF_REPORT_NODE(diag, node, "MatMul Error: Inner dimensions mismatch [%d] vs [%d] in '%s'", 
-                            info1->shape[1], info2->shape[0], node->id);
-                        success = false;
-                    }
+            }
+            else if (asrt->type == SF_ASSERT_BROADCAST_COMPATIBLE) {
+                if (!inputs[0] || !inputs[1]) continue;
+                const sf_type_info* info1 = &inputs[0]->out_info;
+                const sf_type_info* info2 = &inputs[1]->out_info;
+                
+                if (!is_scalar(info1) && !is_scalar(info2) && !shapes_match(info1, info2)) {
+                    char s1[64], s2[64];
+                    sf_shape_format(info1, s1, sizeof(s1));
+                    sf_shape_format(info2, s2, sizeof(s2));
+                    SF_REPORT_NODE(diag, node, "Shape Mismatch: Cannot broadcast inputs of node '%s' (%s vs %s)", node->id, s1, s2);
+                    success = false;
                 }
-                break;
-
-            case SF_SHAPE_DOT:
-                if (info1 && info2) {
-                    if (info1->shape[info1->ndim-1] != info2->shape[info2->ndim-1]) {
-                        SF_REPORT_NODE(diag, node, "Dot Error: Last dimensions mismatch in '%s' (%d vs %d)", 
-                            node->id, info1->shape[info1->ndim-1], info2->shape[info2->ndim-1]);
-                        success = false;
-                    }
-                }
-                break;
-
-            default:
-                break;
+            }
         }
     }
 

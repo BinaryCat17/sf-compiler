@@ -26,6 +26,21 @@ void sf_compiler_diag_report(sf_compiler_diag* diag, sf_source_loc loc, const ch
 
 // --- IR Definitions ---
 
+typedef struct sf_json_value sf_json_value;
+
+typedef enum {
+    SF_ASSERT_NONE = 0,
+    SF_ASSERT_MATCH_DIM,
+    SF_ASSERT_BROADCAST_COMPATIBLE
+} sf_assert_type;
+
+typedef struct {
+    sf_assert_type type;
+    i8 p0, a0; // Port index and Axis (-1 for last)
+    i8 p1, a1; // Port index and Axis (-1 for last)
+    const char* msg;
+} sf_op_assert;
+
 typedef struct {
     const char* name;
     u16 opcode;
@@ -38,9 +53,64 @@ typedef struct {
     sf_access_pattern access_pattern;
     const char* ports[4];
     u8 arity;
+    i8 min_rank;
+    i8 max_rank;
+    u16 flags;
+    const sf_op_assert* assertions;
+    u8 assertion_count;
 } sf_op_metadata;
 
+#define SF_OP_FLAG_SPATIAL    (1 << 0)
+#define SF_OP_FLAG_REDUCER    (1 << 1)
+#define SF_OP_FLAG_GENERATOR  (1 << 2)
+#define SF_OP_FLAG_MEMORY     (1 << 3)
+#define SF_OP_FLAG_FORCE_DOM  (1 << 4)
+#define SF_OP_FLAG_COMMUTATIVE (1 << 5)
+#define SF_OP_FLAG_ASSOCIATIVE (1 << 6)
+
 extern const sf_op_metadata SF_OP_METADATA[SF_NODE_COUNT];
+
+// --- Fusion Rules ---
+typedef struct {
+    const char* port_name;
+    sf_node_type match_type;
+    u8 max_use_count;
+    const char* remap_to_port;
+} sf_fusion_match;
+
+typedef struct {
+    sf_node_type target_type;
+    sf_node_type replace_with;
+    sf_fusion_match matches[2]; // Simplified to 2 for now
+    u8 match_count;
+} sf_fusion_rule;
+
+extern const sf_fusion_rule SF_FUSION_RULES[];
+extern const size_t SF_FUSION_RULE_COUNT;
+
+typedef struct {
+    const char* from;
+    sf_node_type to;
+} sf_compiler_alias;
+
+extern const sf_compiler_alias SF_COMPILER_ALIASES[];
+extern const size_t SF_COMPILER_ALIAS_COUNT;
+
+typedef struct {
+    const char* id;
+    sf_node_type type;
+    const char* input_map[4]; // maps subgraph port to local node id
+} sf_lowering_step;
+
+typedef struct {
+    sf_node_type target_type;
+    const sf_lowering_step* steps;
+    u32 step_count;
+    const char* output_node_id;
+} sf_lowering_rule;
+
+extern const sf_lowering_rule SF_LOWERING_RULES[];
+extern const size_t SF_LOWERING_RULE_COUNT;
 
 typedef struct {
     const char* id; 
@@ -94,6 +164,9 @@ typedef struct {
 } sf_graph_ir;
 
 // --- Manifest Interface ---
+
+typedef struct sf_json_value sf_json_value;
+void sf_ir_parse_window_settings(const sf_json_value* root, sf_graph_ir* out_ir);
 
 typedef struct {
     const char* id;

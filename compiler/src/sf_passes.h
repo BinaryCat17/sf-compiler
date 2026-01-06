@@ -25,8 +25,25 @@ typedef struct {
     sf_graph_ir* ir;
     sf_arena* arena;
     const char* base_path; // For resolving sub-graphs
+    
+    // Analysis results shared between passes
+    sf_ir_node** sorted_nodes;
+    size_t sorted_count;
 } sf_pass_ctx;
 
+typedef bool (*sf_pass_fn)(sf_pass_ctx* ctx, sf_compiler_diag* diag);
+
+typedef struct {
+    const char* id;
+    const char* name;
+    sf_pass_fn func;
+} sf_pipeline_pass_def;
+
+// --- Pass: AST -> IR (Lowering & Validation) ---
+// Converts the AST into the Semantic Graph IR.
+// - Resolves Node Types and Enums
+// - Validates Data schemas
+// - Resolves Port Names to Indices
 bool sf_pass_lower(sf_ast_graph* ast, sf_graph_ir* out_ir, sf_arena* arena, const char* base_path, sf_compiler_diag* diag);
 
 // --- Pass: Inline Subgraphs ---
@@ -34,25 +51,13 @@ bool sf_pass_lower(sf_ast_graph* ast, sf_graph_ir* out_ir, sf_arena* arena, cons
 // Handles port remapping and unique ID generation.
 bool sf_pass_inline(sf_graph_ir* ir, sf_arena* arena, sf_compiler_diag* diag);
 
-// Static Analysis (Types, Shapes, Strides)
-bool sf_pass_analyze(sf_graph_ir* ir, sf_ir_node** sorted_nodes, size_t count, sf_compiler_diag* diag);
-
-// --- Pass: Validation (Strict Consistency) ---
-// Performs final structural and semantic checks before codegen.
-// - Checks Identity compatibility (e.g. SPATIAL into UNIFORM)
-// - Checks Domain consistency
-bool sf_pass_validate(sf_graph_ir* ir, sf_ir_node** sorted_nodes, size_t count, sf_compiler_diag* diag);
-
-// --- Pass: Domain Splitting ---
-// Groups nodes into execution tasks based on their output shapes and dependencies.
-bool sf_pass_domain_split(sf_graph_ir* ir, sf_compiler_diag* diag);
-
-// --- Pass: Optimization (Instruction Fusion) ---
-// Fuses (Mul + Add) into FMA instructions.
-bool sf_pass_fuse(sf_graph_ir* ir, sf_compiler_diag* diag);
-
-// --- Pass: Register Allocation (Liveness Analysis) ---
-// Minimizes the number of registers by reusing them for non-overlapping lifetimes.
-bool sf_pass_liveness(sf_graph_ir* ir, sf_ir_node** sorted, size_t count, sf_compiler_diag* diag);
+// --- Pass Components (Internal) ---
+bool sf_pass_decompose(sf_pass_ctx* ctx, sf_compiler_diag* diag);
+bool sf_pass_sort(sf_pass_ctx* ctx, sf_compiler_diag* diag);
+bool sf_pass_analyze(sf_pass_ctx* ctx, sf_compiler_diag* diag);
+bool sf_pass_validate(sf_pass_ctx* ctx, sf_compiler_diag* diag);
+bool sf_pass_domain_split(sf_pass_ctx* ctx, sf_compiler_diag* diag);
+bool sf_pass_fuse(sf_pass_ctx* ctx, sf_compiler_diag* diag);
+bool sf_pass_liveness(sf_pass_ctx* ctx, sf_compiler_diag* diag);
 
 #endif // SF_PASSES_H

@@ -1,44 +1,9 @@
 #include "sf_compiler_internal.h"
+#include "sf_passes.h"
 #include <sionflow/base/sf_json.h>
 #include <string.h>
 
-void sf_ir_parse_window_settings(const sf_json_value* root, sf_graph_ir* out_ir) {
-    if (!root || root->type != SF_JSON_VAL_OBJECT) return;
-
-    // Defaults
-    strncpy(out_ir->app_title, "SionFlow Cartridge", SF_MAX_TITLE_NAME - 1);
-    out_ir->window_width = 800;
-    out_ir->window_height = 600;
-    out_ir->vsync = 1;
-    out_ir->resizable = 1;
-
-    const sf_json_value* window = sf_json_get_field(root, "window");
-    if (window && window->type == SF_JSON_VAL_OBJECT) {
-        const sf_json_value* title = sf_json_get_field(window, "title");
-        if (title && title->type == SF_JSON_VAL_STRING) strncpy(out_ir->app_title, title->as.s, SF_MAX_TITLE_NAME - 1);
-        
-        const sf_json_value* w = sf_json_get_field(window, "width");
-        if (w && w->type == SF_JSON_VAL_NUMBER) out_ir->window_width = (u32)w->as.n;
-
-        const sf_json_value* h = sf_json_get_field(window, "height");
-        if (h && h->type == SF_JSON_VAL_NUMBER) out_ir->window_height = (u32)h->as.n;
-
-        const sf_json_value* vsync = sf_json_get_field(window, "vsync");
-        if (vsync && vsync->type == SF_JSON_VAL_BOOL) out_ir->vsync = vsync->as.b;
-
-        const sf_json_value* fs = sf_json_get_field(window, "fullscreen");
-        if (fs && fs->type == SF_JSON_VAL_BOOL) out_ir->fullscreen = fs->as.b;
-
-        const sf_json_value* resizable = sf_json_get_field(window, "resizable");
-        if (resizable && resizable->type == SF_JSON_VAL_BOOL) out_ir->resizable = resizable->as.b;
-    }
-
-    const sf_json_value* runtime = sf_json_get_field(root, "runtime");
-    if (runtime && runtime->type == SF_JSON_VAL_OBJECT) {
-        const sf_json_value* threads = sf_json_get_field(runtime, "threads");
-        if (threads && threads->type == SF_JSON_VAL_NUMBER) out_ir->num_threads = (u32)threads->as.n;
-    }
-}
+// sf_ir_parse_window_settings is now automatically generated in sf_manifest_gen.c
 
 // --- Helper: Find Input Source ---
 sf_ir_node* find_input_source(sf_graph_ir* ir, u32 dst_node_idx, u32 dst_port) {
@@ -73,15 +38,10 @@ typedef struct {
 
 static bool visit_node(sort_ctx* ctx, u32 node_idx) {
     if (ctx->visited[node_idx] == 2) return true;
-    
-    // Cycle detection
-    if (ctx->visited[node_idx] == 1) {
-        return false; 
-    }
+    if (ctx->visited[node_idx] == 1) return false; 
     
     ctx->visited[node_idx] = 1;
 
-    // Visit dependencies
     for (size_t i = 0; i < ctx->ir->link_count; ++i) {
         if (ctx->ir->links[i].dst_node_idx == node_idx) {
             if (!visit_node(ctx, ctx->ir->links[i].src_node_idx)) return false;
@@ -93,20 +53,28 @@ static bool visit_node(sort_ctx* ctx, u32 node_idx) {
     return true;
 }
 
-sf_ir_node** sf_topo_sort(sf_graph_ir* ir, sf_arena* arena, size_t* out_count) {
+bool sf_pass_sort(sf_pass_ctx* ctx, sf_compiler_diag* diag) {
+    sf_graph_ir* ir = ctx->ir;
+    sf_arena* arena = ctx->arena;
+    
     sf_ir_node** sorted = SF_ARENA_PUSH(arena, sf_ir_node*, ir->node_count);
     u8* visited = SF_ARENA_PUSH(arena, u8, ir->node_count);
-    if (!sorted || !visited) return NULL;
+    if (!sorted || !visited) return false;
     
     memset(visited, 0, ir->node_count);
 
-    sort_ctx ctx = { .sorted_nodes = sorted, .visited = visited, .count = 0, .ir = ir };
+    sort_ctx s_ctx = { .sorted_nodes = sorted, .visited = visited, .count = 0, .ir = ir };
     for (size_t i = 0; i < ir->node_count; ++i) {
         if (visited[i] == 0) {
-            if (!visit_node(&ctx, (u32)i)) return NULL;
+            if (!visit_node(&s_ctx, (u32)i)) {
+                sf_source_loc loc = {0};
+                sf_compiler_diag_report(diag, loc, "Cycle detected in graph or sorting failed.");
+                return false;
+            }
         }
     }
     
-    if (out_count) *out_count = ctx.count;
-    return sorted;
+    ctx->sorted_nodes = sorted;
+    ctx->sorted_count = s_ctx.count;
+    return true;
 }

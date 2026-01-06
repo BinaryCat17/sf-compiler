@@ -1,0 +1,60 @@
+#include <sionflow/compiler/sf_compiler.h>
+
+/**
+ * SionFlow Fusion Rules
+ * Automatically generated from compiler_spec.json. DO NOT EDIT.
+ */
+
+const sf_fusion_rule SF_FUSION_RULES[] = {
+{% for rule in compiler.fusion_rules %}
+    {
+        SF_NODE_{{ rule.target }},
+        SF_NODE_{{ rule.replace_with }},
+        {
+            {%- for pattern in rule.patterns %}
+            { "{{ pattern.input }}", SF_NODE_{{ pattern.match.type }}, {{ pattern.match.use_count }}, "{{ pattern.other_is_port }}" }{%- if not loop.last %}, {% endif %}
+            {%- endfor %}
+        },
+        {{ rule.patterns | length }}
+    },
+{%- endfor %}
+};
+
+const size_t SF_FUSION_RULE_COUNT = sizeof(SF_FUSION_RULES) / sizeof(SF_FUSION_RULES[0]);
+
+const sf_compiler_alias SF_COMPILER_ALIASES[] = {
+{% for alias in compiler.aliases %}
+    { "{{ alias.from }}", SF_NODE_{{ alias.to }} },
+{%- endfor %}
+};
+
+const size_t SF_COMPILER_ALIAS_COUNT = sizeof(SF_COMPILER_ALIASES) / sizeof(SF_COMPILER_ALIASES[0]);
+
+{% for rule in compiler.lowering_rules %}
+static const sf_lowering_step LOWERING_STEPS_{{ rule.id }}[] = {
+    {%- for step in rule.replace_with_subgraph %}
+    { 
+        "{{ step.id }}", 
+        SF_NODE_{{ step.type }}, 
+        { 
+            {%- for p_name, p_target in step.inputs.items() -%}
+            "{{ p_target }}"{%- if not loop.last %}, {% endif -%}
+            {%- endfor -%}
+        } 
+    }{%- if not loop.last %}, {% endif %}
+    {%- endfor %}
+};
+{% endfor %}
+
+const sf_lowering_rule SF_LOWERING_RULES[] = {
+{% for rule in compiler.lowering_rules %}
+    {
+        SF_NODE_{{ rule.target }},
+        LOWERING_STEPS_{{ rule.id }},
+        {{ rule.replace_with_subgraph | length }},
+        "{{ rule.output }}"
+    },
+{%- endfor %}
+};
+
+const size_t SF_LOWERING_RULE_COUNT = sizeof(SF_LOWERING_RULES) / sizeof(SF_LOWERING_RULES[0]);

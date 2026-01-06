@@ -5,24 +5,25 @@
 #include <stdlib.h>
 #include <string.h>
 
-bool sf_pass_liveness(sf_graph_ir* ir, sf_ir_node** sorted, size_t count, sf_compiler_diag* diag) {
+bool sf_pass_liveness(sf_pass_ctx* ctx, sf_compiler_diag* diag) {
+    sf_graph_ir* ir = ctx->ir;
+    sf_ir_node** sorted = ctx->sorted_nodes;
+    size_t count = ctx->sorted_count;
+
     if (!ir || !sorted) {
         SF_REPORT(diag, NULL, "Liveness Pass: Internal Error - IR or sorted nodes is NULL");
         return false;
     }
 
     // 1. Map node pointers to their sorted position
-    u32* sorted_pos = calloc(ir->node_count, sizeof(u32));
-    if (!sorted_pos) {
-        SF_REPORT(diag, NULL, "Liveness Pass: Out of memory for sorted_pos");
-        return false;
-    }
+    u32* sorted_pos = SF_ARENA_PUSH(ctx->arena, u32, ir->node_count);
+    if (!sorted_pos) return false;
     for(u32 i=0; i<ir->node_count; ++i) sorted_pos[i] = UINT32_MAX;
     for(u32 i=0; i<count; ++i) sorted_pos[sorted[i] - ir->nodes] = (u32)i;
 
     // 2. Find last use for each node
-    u32* last_use = malloc(ir->node_count * sizeof(u32));
-    if (!last_use) { free(sorted_pos); return false; }
+    u32* last_use = SF_ARENA_PUSH(ctx->arena, u32, ir->node_count);
+    if (!last_use) return false;
     for (u32 i = 0; i < ir->node_count; ++i) last_use[i] = 0;
 
     for (size_t l = 0; l < ir->link_count; ++l) {
@@ -38,8 +39,8 @@ bool sf_pass_liveness(sf_graph_ir* ir, sf_ir_node** sorted, size_t count, sf_com
 
     // 3. Register Allocation
     u16 next_reg = 0;
-    u32* reg_free_at = malloc(ir->node_count * sizeof(u32)); 
-    if (!reg_free_at) { free(sorted_pos); free(last_use); return false; }
+    u32* reg_free_at = SF_ARENA_PUSH(ctx->arena, u32, ir->node_count); 
+    if (!reg_free_at) return false;
     for(int i=0; i<ir->node_count; ++i) reg_free_at[i] = 0;
 
     for (size_t i = 0; i < count; ++i) {
@@ -120,8 +121,5 @@ bool sf_pass_liveness(sf_graph_ir* ir, sf_ir_node** sorted, size_t count, sf_com
 
     SF_LOG_INFO("Liveness: Allocated %u registers for %u nodes", next_reg, (u32)count);
 
-    free(last_use);
-    free(sorted_pos);
-    free(reg_free_at);
     return true;
 }

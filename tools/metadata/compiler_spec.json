@@ -3,6 +3,15 @@
     "name": "SionFlow Compiler",
     "version": "1.0.0"
   },
+  "pipeline": [
+    { "id": "decompose", "name": "Decomposition", "func": "sf_pass_decompose" },
+    { "id": "fuse",      "name": "Op Fusion",     "func": "sf_pass_fuse" },
+    { "id": "sort",      "name": "Topological Sort", "func": "sf_pass_sort" },
+    { "id": "analyze",   "name": "Static Analysis", "func": "sf_pass_analyze" },
+    { "id": "validate",  "name": "Validation",    "func": "sf_pass_validate" },
+    { "id": "liveness",  "name": "Liveness Analysis", "func": "sf_pass_liveness" },
+    { "id": "domain",    "name": "Domain Splitting", "func": "sf_pass_domain_split" }
+  ],
   "aliases": [
     { "from": "Index", "to": "INDEX_X", "reason": "Default index axis" }
   ],
@@ -33,11 +42,38 @@
       "id": "DECOMPOSE_MEAN",
       "target": "MEAN",
       "replace_with_subgraph": [
-        { "id": "sum", "type": "SUM", "inputs": { "in": "in" } },
+        { "id": "sum", "type": "REDUCE_SUM", "inputs": { "in": "in" } },
         { "id": "size", "type": "SIZE", "inputs": { "in": "in" } },
         { "id": "div", "type": "DIV", "inputs": { "a": "sum", "b": "size" } }
       ],
       "output": "div"
     }
-  ]
+  ],
+  "node_constraints": {
+    "MATMUL": { 
+      "min_rank": 2,
+      "assertions": [
+        { "type": "MATCH_DIM", "p0": 0, "a0": 1, "p1": 1, "a1": 0, "msg": "Inner dimensions mismatch" }
+      ]
+    },
+    "DOT": { 
+      "min_rank": 1, 
+      "flags": ["REDUCER"],
+      "assertions": [
+        { "type": "MATCH_DIM", "p0": 0, "a0": -1, "p1": 1, "a1": -1, "msg": "Last dimensions mismatch" }
+      ]
+    },
+    "ADD": { "flags": ["COMMUTATIVE", "ASSOCIATIVE"], "assertions": [{ "type": "BROADCAST_COMPATIBLE" }] },
+    "MUL": { "flags": ["COMMUTATIVE", "ASSOCIATIVE"], "assertions": [{ "type": "BROADCAST_COMPATIBLE" }] },
+    "LENGTH": { "min_rank": 1, "flags": ["REDUCER"] },
+    "NORMALIZE": { "min_rank": 1 },
+    "INDEX_X": { "flags": ["GENERATOR", "SPATIAL"] },
+    "INDEX_Y": { "flags": ["GENERATOR", "SPATIAL"] },
+    "INDEX_Z": { "flags": ["GENERATOR", "SPATIAL"] },
+    "REDUCE_SUM": { "flags": ["REDUCER"] },
+    "SIZE": { "flags": ["REDUCER"] },
+    "GATHER": { "flags": ["MEMORY"] },
+    "SLICE": { "flags": ["MEMORY"] },
+    "RESHAPE": { "flags": ["MEMORY"] }
+  }
 }

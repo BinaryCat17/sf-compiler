@@ -11,9 +11,12 @@
 static sf_node_type get_node_type(const char* type_str) {
     if (!type_str) return SF_NODE_UNKNOWN;
     
-    // Alias for Index nodes (mapped to X/Y/Z based on axis)
-    if (strcmp(type_str, "Index") == 0) return SF_NODE_INDEX_X;
+    // 1. Check dynamic aliases from compiler_spec.json
+    for (size_t i = 0; i < SF_COMPILER_ALIAS_COUNT; ++i) {
+        if (strcmp(type_str, SF_COMPILER_ALIASES[i].from) == 0) return SF_COMPILER_ALIASES[i].to;
+    }
 
+    // 2. Check built-in node names
     for (int i = 1; i < SF_NODE_COUNT; ++i) {
         if (strcmp(type_str, SF_OP_METADATA[i].name) == 0) return (sf_node_type)i;
     }
@@ -30,6 +33,13 @@ static u32 get_port_index(sf_node_type type, const char* port_name) {
 }
 
 // --- Helpers ---
+
+static const sf_lowering_rule* find_lowering_rule(sf_node_type type) {
+    for (size_t i = 0; i < SF_LOWERING_RULE_COUNT; ++i) {
+        if (SF_LOWERING_RULES[i].target_type == type) return &SF_LOWERING_RULES[i];
+    }
+    return NULL;
+}
 
 static void parse_const_tensor(const sf_json_value* val, const sf_json_value* node_data, sf_type_info* info, void** out_data, sf_arena* arena) {
     if (!val || !info || !out_data) return;
@@ -186,10 +196,11 @@ bool sf_pass_lower(sf_ast_graph* ast, sf_graph_ir* out_ir, sf_arena* arena, cons
     // --- Process Root App Settings (Cartridge Metadata) ---
     sf_ir_parse_window_settings(ast->root, out_ir);
 
+    size_t cap = ast->node_count + 64; // Reserve space for decompositions
     out_ir->node_count = ast->node_count;
-    out_ir->node_cap = ast->node_count;
-    out_ir->nodes = SF_ARENA_PUSH(arena, sf_ir_node, ast->node_count);
-    memset(out_ir->nodes, 0, sizeof(sf_ir_node) * ast->node_count);
+    out_ir->node_cap = cap;
+    out_ir->nodes = SF_ARENA_PUSH(arena, sf_ir_node, cap);
+    memset(out_ir->nodes, 0, sizeof(sf_ir_node) * cap);
 
     sf_str_map map;
     sf_map_init(&map, ast->node_count * 2, arena);
@@ -271,9 +282,10 @@ bool sf_pass_lower(sf_ast_graph* ast, sf_graph_ir* out_ir, sf_arena* arena, cons
     }
 
     // 3. Process Links
+    size_t link_cap = ast->link_count + 128; // Reserve space for internal links
     out_ir->link_count = ast->link_count;
-    out_ir->link_cap = ast->link_count;
-    out_ir->links = SF_ARENA_PUSH(arena, sf_ir_link, ast->link_count);
+    out_ir->link_cap = link_cap;
+    out_ir->links = SF_ARENA_PUSH(arena, sf_ir_link, link_cap);
 
     for (size_t i = 0; i < ast->link_count; ++i) {
         sf_ast_link* l_src = &ast->links[i];

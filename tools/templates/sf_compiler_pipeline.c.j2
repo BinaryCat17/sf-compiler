@@ -1,0 +1,15 @@
+#include <sionflow/compiler/sf_compiler.h>
+#include "../../compiler/src/sf_passes.h"
+
+/**
+ * SionFlow Compiler Pipeline
+ * Automatically generated from compiler_spec.json. DO NOT EDIT.
+ */
+
+const sf_pipeline_pass_def SF_COMPILER_PIPELINE[] = {
+{% for pass in compiler.pipeline %}
+    { "{{ pass.id }}", "{{ pass.name }}", {{ pass.func }} }{%- if not loop.last %}, {% endif %}
+{%- endfor %}
+};
+
+const size_t SF_COMPILER_PIPELINE_COUNT = sizeof(SF_COMPILER_PIPELINE) / sizeof(SF_COMPILER_PIPELINE[0]);
