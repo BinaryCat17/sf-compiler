@@ -1,0 +1,43 @@
+{
+  "compiler": {
+    "name": "SionFlow Compiler",
+    "version": "1.0.0"
+  },
+  "aliases": [
+    { "from": "Index", "to": "INDEX_X", "reason": "Default index axis" }
+  ],
+  "fusion_rules": [
+    {
+      "id": "FUSE_MUL_ADD_TO_FMA",
+      "summary": "Fuse (A * B) + C into FMA(A, B, C)",
+      "target": "ADD",
+      "patterns": [
+        {
+          "input": "a",
+          "match": { "type": "MUL", "use_count": 1 },
+          "map_ports": { "a": "a", "b": "b" },
+          "other_is_port": "c"
+        },
+        {
+          "input": "b",
+          "match": { "type": "MUL", "use_count": 1 },
+          "map_ports": { "a": "a", "b": "b" },
+          "other_is_port": "c"
+        }
+      ],
+      "replace_with": "FMA"
+    }
+  ],
+  "lowering_rules": [
+    {
+      "id": "DECOMPOSE_MEAN",
+      "target": "MEAN",
+      "replace_with_subgraph": [
+        { "id": "sum", "type": "SUM", "inputs": { "in": "in" } },
+        { "id": "size", "type": "SIZE", "inputs": { "in": "in" } },
+        { "id": "div", "type": "DIV", "inputs": { "a": "sum", "b": "size" } }
+      ],
+      "output": "div"
+    }
+  ]
+}
