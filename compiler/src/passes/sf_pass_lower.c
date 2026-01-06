@@ -1,6 +1,7 @@
 #include "../sf_passes.h"
 #include "../sf_compiler_internal.h"
 #include <sionflow/base/sf_utils.h>
+#include <sionflow/isa/sf_builtins.h>
 #include <sionflow/base/sf_log.h>
 #include <sionflow/base/sf_shape.h>
 #include <string.h>
@@ -77,26 +78,6 @@ static bool lower_node(const sf_json_value* node_val, sf_ir_node* ir_node, sf_ar
     // I need to read more of this file to find where parse_const_tensor is called.
 }
 
-static void _parse_provider(const char* provider, u16* out_builtin_id, u8* out_builtin_axis) {
-    if (!provider || provider[0] == '\0') {
-        *out_builtin_id = SF_BUILTIN_NONE;
-        *out_builtin_axis = 0;
-        return;
-    }
-
-    if (strncmp(provider, "host.index", 10) == 0) {
-        *out_builtin_id = SF_BUILTIN_INDEX;
-        if (provider[10] == '.' && provider[11] >= '0' && provider[11] <= '9') {
-            *out_builtin_axis = (u8)atoi(provider + 11);
-        } else {
-            *out_builtin_axis = 0;
-        }
-    } else {
-        *out_builtin_id = SF_BUILTIN_NONE;
-        *out_builtin_axis = 0;
-    }
-}
-
 static bool parse_node_attributes(sf_ir_node* dst, const sf_json_value* data, const char* base_path, sf_arena* arena, sf_compiler_diag* diag) {
     if (!data) return true;
 
@@ -113,7 +94,7 @@ static bool parse_node_attributes(sf_ir_node* dst, const sf_json_value* data, co
             
             if (v_provider && v_provider->type == SF_JSON_VAL_STRING) {
                 dst->provider = sf_arena_strdup(arena, v_provider->as.s);
-                _parse_provider(dst->provider, &dst->builtin_id, &dst->builtin_axis);
+                sf_provider_parse(dst->provider, &dst->builtin_id, &dst->builtin_axis);
             }
 
             if (v_readonly && v_readonly->type == SF_JSON_VAL_BOOL && v_readonly->as.b) {

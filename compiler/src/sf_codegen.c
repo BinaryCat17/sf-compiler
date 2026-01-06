@@ -1,6 +1,7 @@
 #include "sf_compiler_internal.h"
 #include <sionflow/isa/sf_opcodes.h>
 #include <sionflow/base/sf_log.h>
+#include <sionflow/isa/sf_builtins.h>
 #include <sionflow/base/sf_shape.h>
 #include <string.h>
 #include <stdio.h>
