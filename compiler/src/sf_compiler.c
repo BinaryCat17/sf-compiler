@@ -18,7 +18,13 @@ void sf_compiler_diag_init(sf_compiler_diag* diag, sf_arena* arena) {
 void sf_compiler_diag_report(sf_compiler_diag* diag, sf_source_loc loc, const char* fmt, ...) {
     if (!diag) return;
     diag->has_error = true;
-    if (diag->error_count >= diag->error_capacity) return;
+    if (diag->error_count >= diag->error_capacity) {
+        if (diag->error_count == diag->error_capacity) {
+            SF_LOG_ERROR("Error capacity reached, suppressing further errors.");
+            diag->error_count++;
+        }
+        return;
+    }
 
     sf_compiler_error* err = &diag->errors[diag->error_count++];
     err->loc = loc;
@@ -29,7 +35,12 @@ void sf_compiler_diag_report(sf_compiler_diag* diag, sf_source_loc loc, const ch
     va_end(args);
 
     // Also log to console for immediate feedback during development
-    SF_LOG_ERROR("%s:%u:%u: error: %s", loc.file ? loc.file : "unknown", loc.line, loc.column, err->message);
+    const char* file = loc.file ? loc.file : "unknown";
+    if (loc.line > 0) {
+        SF_LOG_ERROR("%s:%u:%u: error: %s", file, loc.line, loc.column, err->message);
+    } else {
+        SF_LOG_ERROR("%s: error: %s", file, err->message);
+    }
 }
 
 #include <stdarg.h>
@@ -70,28 +81,38 @@ sf_program* sf_compile(sf_graph_ir* ir, sf_arena* arena, sf_compiler_diag* diag)
     return prog;
 }
 
+static bool _safe_write(const void* ptr, size_t size, size_t nmemb, FILE* stream) {
+    if (size == 0 || nmemb == 0) return true;
+    size_t written = fwrite(ptr, size, nmemb, stream);
+    if (written != nmemb) {
+        SF_LOG_ERROR("File write failed: wrote %zu of %zu elements", written, nmemb);
+        return false;
+    }
+    return true;
+}
+
 static size_t _write_program(const sf_program* prog, FILE* f) {
     size_t start = ftell(f);
     
     // 1. Header
-    fwrite(&prog->meta, sizeof(sf_bin_header), 1, f);
+    if (!_safe_write(&prog->meta, sizeof(sf_bin_header), 1, f)) return 0;
     
     // 2. Code
-    fwrite(prog->code, sizeof(sf_instruction), prog->meta.instruction_count, f);
+    if (!_safe_write(prog->code, sizeof(sf_instruction), prog->meta.instruction_count, f)) return 0;
 
     // 3. Symbol Table
     if (prog->meta.symbol_count > 0) {
-        fwrite(prog->symbols, sizeof(sf_bin_symbol), prog->meta.symbol_count, f);
+        if (!_safe_write(prog->symbols, sizeof(sf_bin_symbol), prog->meta.symbol_count, f)) return 0;
     }
 
     // 4. Tasks
     if (prog->meta.task_count > 0) {
-        fwrite(prog->tasks, sizeof(sf_task), prog->meta.task_count, f);
+        if (!_safe_write(prog->tasks, sizeof(sf_task), prog->meta.task_count, f)) return 0;
     }
 
     // 4.5 Task Bindings
     if (prog->meta.binding_count > 0) {
-        fwrite(prog->bindings, sizeof(sf_bin_task_binding), prog->meta.binding_count, f);
+        if (!_safe_write(prog->bindings, sizeof(sf_bin_task_binding), prog->meta.binding_count, f)) return 0;
     }
 
     // 5. Tensor Metadata
@@ -111,7 +132,7 @@ static size_t _write_program(const sf_program* prog, FILE* f) {
             desc.data_size = sf_shape_calc_bytes(info->dtype, info->shape, info->ndim);
         }
         
-        fwrite(&desc, sizeof(sf_bin_tensor_desc), 1, f);
+        if (!_safe_write(&desc, sizeof(sf_bin_tensor_desc), 1, f)) return 0;
     }
 
     // 5. Tensor Data Blob
@@ -120,7 +141,7 @@ static size_t _write_program(const sf_program* prog, FILE* f) {
         if (data_ptr) {
             sf_type_info* info = &prog->tensor_infos[i];
             size_t sz = sf_shape_calc_bytes(info->dtype, info->shape, info->ndim);
-            fwrite(data_ptr, 1, sz, f);
+            if (!_safe_write(data_ptr, 1, sz, f)) return 0;
         }
     }
 
@@ -162,21 +183,23 @@ bool sf_compile_save_cartridge(const char* path, const sf_graph_ir* ir, const sf
     }
 
     // Write header placeholder
-    fwrite(&cart, sizeof(sf_cartridge_header), 1, f);
+    if (!_safe_write(&cart, sizeof(sf_cartridge_header), 1, f)) { fclose(f); return false; }
 
     for (u32 i = 0; i < section_count; ++i) {
         cart.sections[i].offset = (uint32_t)ftell(f);
         if (sections[i].type == SF_SECTION_PROGRAM) {
-            cart.sections[i].size = (uint32_t)_write_program((const sf_program*)sections[i].data, f);
+            size_t sz = _write_program((const sf_program*)sections[i].data, f);
+            if (sz == 0) { fclose(f); return false; }
+            cart.sections[i].size = (uint32_t)sz;
         } else {
-            fwrite(sections[i].data, 1, sections[i].size, f);
+            if (!_safe_write(sections[i].data, 1, sections[i].size, f)) { fclose(f); return false; }
             cart.sections[i].size = sections[i].size;
         }
     }
 
     // Rewrite header with correct offsets and sizes
     fseek(f, 0, SEEK_SET);
-    fwrite(&cart, sizeof(sf_cartridge_header), 1, f);
+    if (!_safe_write(&cart, sizeof(sf_cartridge_header), 1, f)) { fclose(f); return false; }
 
     fclose(f);
     return true;
