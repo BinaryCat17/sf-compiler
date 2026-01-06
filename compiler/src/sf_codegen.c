@@ -60,10 +60,8 @@ bool sf_codegen_emit(sf_program* prog, sf_graph_ir* ir, sf_ir_node** sorted, siz
             sym->name[SF_MAX_SYMBOL_NAME - 1] = '\0';
             sym->name_hash = sf_fnv1a_hash(sym->name);
             sym->register_idx = r_idx;
-            sym->builtin_id = node->builtin_id;
-            sym->builtin_axis = node->builtin_axis;
-            if (node->provider) strncpy(sym->provider, node->provider, SF_MAX_SYMBOL_NAME - 1);
-            else sym->provider[0] = '\0';
+            sym->related_name_hash = 0; // TODO: implement shape-driving relations
+            sym->provider[0] = '\0';
             
             sym->flags = (node->type == SF_NODE_INPUT) ? SF_SYMBOL_FLAG_INPUT : 
                          (node->type == SF_NODE_OUTPUT) ? SF_SYMBOL_FLAG_OUTPUT : 0;

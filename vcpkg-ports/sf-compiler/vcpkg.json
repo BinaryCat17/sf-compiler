@@ -1,7 +1,7 @@
 {
   "name": "sf-compiler",
-  "version": "0.1.3",
-  "description": "JSON to SionFlow bytecode compiler",
+  "version": "0.1.4",
+  "description": "Compiler for SionFlow graphs",
   "dependencies": [
     "sf-spec",
     {
