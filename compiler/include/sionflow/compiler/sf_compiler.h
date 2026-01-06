@@ -28,47 +28,8 @@ void sf_compiler_diag_report(sf_compiler_diag* diag, sf_source_loc loc, const ch
 
 typedef struct sf_json_value sf_json_value;
 
-typedef enum {
-    SF_ASSERT_NONE = 0,
-    SF_ASSERT_MATCH_DIM,
-    SF_ASSERT_BROADCAST_COMPATIBLE
-} sf_assert_type;
-
-typedef struct {
-    sf_assert_type type;
-    i8 p0, a0; // Port index and Axis (-1 for last)
-    i8 p1, a1; // Port index and Axis (-1 for last)
-    const char* msg;
-} sf_op_assert;
-
-typedef struct {
-    const char* name;
-    u16 opcode;
-    sf_op_category category;
-    sf_dispatch_strategy strategy;
-    u32 input_mask;
-    u32 output_mask;
-    sf_out_rule out_rule;
-    sf_shape_rule shape_rule;
-    sf_access_pattern access_pattern;
-    const char* ports[4];
-    u8 arity;
-    i8 min_rank;
-    i8 max_rank;
-    u16 flags;
-    const sf_op_assert* assertions;
-    u8 assertion_count;
-} sf_op_metadata;
-
-#define SF_OP_FLAG_SPATIAL    (1 << 0)
-#define SF_OP_FLAG_REDUCER    (1 << 1)
-#define SF_OP_FLAG_GENERATOR  (1 << 2)
-#define SF_OP_FLAG_MEMORY     (1 << 3)
-#define SF_OP_FLAG_FORCE_DOM  (1 << 4)
-#define SF_OP_FLAG_COMMUTATIVE (1 << 5)
-#define SF_OP_FLAG_ASSOCIATIVE (1 << 6)
-
-extern const sf_op_metadata SF_OP_METADATA[SF_NODE_COUNT];
+// Node metadata and opcodes are provided by SionFlow ISA
+#include <sionflow/isa/sf_opcodes.h>
 
 // --- Fusion Rules ---
 typedef struct {

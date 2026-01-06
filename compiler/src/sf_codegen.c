@@ -146,7 +146,6 @@ bool sf_codegen_emit(sf_program* prog, sf_graph_ir* ir, sf_ir_node** sorted, siz
                 if (!found) {
                     sf_bin_task_binding* b = &bindings[total_binding_count++];
                     b->reg_idx = r;
-                    b->byte_stride = 0; // Filled by backend or during serialization
                     b->flags = (is_reduction && k == 0) ? SF_BINDING_FLAG_REDUCTION : 0;
                     curr_task->binding_count++;
                 }
