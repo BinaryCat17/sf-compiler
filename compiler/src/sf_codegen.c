@@ -21,19 +21,12 @@ bool sf_codegen_emit(sf_program* prog, sf_graph_ir* ir, sf_ir_node** sorted, siz
     prog->meta.symbol_count = symbol_count;
     prog->symbols = (symbol_count > 0) ? SF_ARENA_PUSH(arena, sf_bin_symbol, symbol_count) : NULL;
 
-        prog->tensor_infos = SF_ARENA_PUSH(arena, sf_type_info, prog->meta.tensor_count);
-
-        memset(prog->tensor_infos, 0, sizeof(sf_type_info) * prog->meta.tensor_count);
-
-        prog->tensor_data = SF_ARENA_PUSH(arena, void*, prog->meta.tensor_count);
-
-        memset(prog->tensor_data, 0, sizeof(void*) * prog->meta.tensor_count);
-
-        prog->tensor_flags = SF_ARENA_PUSH(arena, uint8_t, prog->meta.tensor_count);
-
-        memset(prog->tensor_flags, 0, prog->meta.tensor_count);
-
-    
+    prog->tensor_infos = SF_ARENA_PUSH(arena, sf_type_info, prog->meta.tensor_count);
+    memset(prog->tensor_infos, 0, sizeof(sf_type_info) * prog->meta.tensor_count);
+    prog->tensor_data = SF_ARENA_PUSH(arena, void*, prog->meta.tensor_count);
+    memset(prog->tensor_data, 0, sizeof(void*) * prog->meta.tensor_count);
+    prog->tensor_flags = SF_ARENA_PUSH(arena, uint8_t, prog->meta.tensor_count);
+    memset(prog->tensor_flags, 0, prog->meta.tensor_count);
 
     sf_instruction* instrs = SF_ARENA_PUSH(arena, sf_instruction, ir->node_count * 3);
     sf_task* tasks = SF_ARENA_PUSH(arena, sf_task, ir->node_count * 2);
@@ -60,7 +53,7 @@ bool sf_codegen_emit(sf_program* prog, sf_graph_ir* ir, sf_ir_node** sorted, siz
             sym->name[SF_MAX_SYMBOL_NAME - 1] = '\0';
             sym->name_hash = sf_fnv1a_hash(sym->name);
             sym->register_idx = r_idx;
-            sym->related_name_hash = 0; // TODO: implement shape-driving relations
+            sym->related_name_hash = 0;
             sym->provider[0] = '\0';
             
             sym->flags = (node->type == SF_NODE_INPUT) ? SF_SYMBOL_FLAG_INPUT : 
@@ -76,10 +69,6 @@ bool sf_codegen_emit(sf_program* prog, sf_graph_ir* ir, sf_ir_node** sorted, siz
         sf_type_info* t_info = &prog->tensor_infos[r_idx];
         if (t_info->ndim == 0) {
             *t_info = node->out_info;
-        }
-
-        if (node->type == SF_NODE_INDEX_X || node->type == SF_NODE_INDEX_Y || node->type == SF_NODE_INDEX_Z) {
-            prog->builtin_ids[r_idx] = 1; // Always index for now
         }
 
         // --- 3. Instruction Generation ---

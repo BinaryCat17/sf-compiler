@@ -115,8 +115,6 @@ static size_t _write_program(const sf_program* prog, FILE* f) {
         sf_bin_tensor_desc desc = {0};
         desc.dtype = (u8)info->dtype;
         desc.ndim = info->ndim;
-        desc.builtin_id = prog->builtin_ids[i];
-        desc.builtin_axis = prog->builtin_axes[i];
         desc.flags = prog->tensor_flags[i];
         void* data_ptr = prog->tensor_data[i];
         desc.is_constant = (data_ptr != NULL);
