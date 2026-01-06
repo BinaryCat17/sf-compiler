@@ -1,7 +1,6 @@
 #include "sf_compiler_internal.h"
 #include <sionflow/isa/sf_opcodes.h>
 #include <sionflow/base/sf_log.h>
-#include <sionflow/isa/sf_builtins.h>
 #include <sionflow/base/sf_shape.h>
 #include <string.h>
 #include <stdio.h>
@@ -82,10 +81,8 @@ bool sf_codegen_emit(sf_program* prog, sf_graph_ir* ir, sf_ir_node** sorted, siz
             *t_info = node->out_info;
         }
 
-        if (node->builtin_id != SF_BUILTIN_NONE) {
-            prog->builtin_ids[r_idx] = (uint8_t)node->builtin_id;
-            prog->builtin_axes[r_idx] = (uint8_t)node->builtin_axis;
-            prog->tensor_flags[r_idx] |= SF_TENSOR_FLAG_GENERATOR;
+        if (node->type == SF_NODE_INDEX_X || node->type == SF_NODE_INDEX_Y || node->type == SF_NODE_INDEX_Z) {
+            prog->builtin_ids[r_idx] = 1; // Always index for now
         }
 
         // --- 3. Instruction Generation ---

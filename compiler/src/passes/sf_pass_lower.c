@@ -1,7 +1,6 @@
 #include "../sf_passes.h"
 #include "../sf_compiler_internal.h"
 #include <sionflow/base/sf_utils.h>
-#include <sionflow/isa/sf_builtins.h>
 #include <sionflow/base/sf_log.h>
 #include <sionflow/base/sf_shape.h>
 #include <string.h>
@@ -86,17 +85,11 @@ static bool parse_node_attributes(sf_ir_node* dst, const sf_json_value* data, co
         case SF_NODE_OUTPUT: {
             const sf_json_value* v_shape = sf_json_get_field(data, "shape");
             const sf_json_value* v_dtype = sf_json_get_field(data, "dtype");
-            const sf_json_value* v_provider = sf_json_get_field(data, "provider");
             const sf_json_value* v_readonly = sf_json_get_field(data, "readonly");
             const sf_json_value* v_persistent = sf_json_get_field(data, "persistent");
             const sf_json_value* v_screen_size = sf_json_get_field(data, "screen_size");
             const sf_json_value* v_output = sf_json_get_field(data, "output");
             
-            if (v_provider && v_provider->type == SF_JSON_VAL_STRING) {
-                dst->provider = sf_arena_strdup(arena, v_provider->as.s);
-                sf_provider_parse(dst->provider, &dst->builtin_id, &dst->builtin_axis);
-            }
-
             if (v_readonly && v_readonly->type == SF_JSON_VAL_BOOL && v_readonly->as.b) {
                 dst->resource_flags |= SF_RESOURCE_FLAG_READONLY;
             }
@@ -133,6 +126,31 @@ static bool parse_node_attributes(sf_ir_node* dst, const sf_json_value* data, co
                     dst->out_info = dst->const_info;
                 }
             }
+            break;
+        }
+        case SF_NODE_INDEX_X:
+        case SF_NODE_INDEX_Y:
+        case SF_NODE_INDEX_Z: {
+            // This case handles the "Index" type from JSON and maps it to specific X/Y/Z nodes
+            const sf_json_value* v_axis = sf_json_get_field(data, "axis");
+            int axis = (v_axis && v_axis->type == SF_JSON_VAL_NUMBER) ? (int)v_axis->as.n : 0;
+            
+            if (axis == 1) {
+                dst->type = SF_NODE_INDEX_Y;
+                dst->builtin_id = 1;
+                dst->builtin_axis = 1;
+            } else if (axis == 2) {
+                dst->type = SF_NODE_INDEX_Z;
+                dst->builtin_id = 1;
+                dst->builtin_axis = 2;
+            } else {
+                dst->type = SF_NODE_INDEX_X;
+                dst->builtin_id = 1;
+                dst->builtin_axis = 0;
+            }
+
+            dst->out_info.dtype = SF_DTYPE_F32;
+            dst->out_info.ndim = 0; // Scalar per element
             break;
         }
         case SF_NODE_CONST: {

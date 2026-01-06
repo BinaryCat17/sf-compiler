@@ -1,5 +1,4 @@
 #include "../sf_passes.h"
-#include <sionflow/isa/sf_builtins.h>
 #include <sionflow/base/sf_log.h>
 #include <sionflow/base/sf_shape.h>
 #include <sionflow/isa/sf_opcodes.h>
@@ -51,15 +50,15 @@ bool sf_pass_analyze(sf_graph_ir* ir, sf_ir_node** sorted_nodes, size_t count, s
         switch (meta->shape_rule) {
             case SF_SHAPE_SPECIAL:
                 if (node->type == SF_NODE_CONST) { /* Handled in pre-pass */ }
-                else if (node->type == SF_NODE_INPUT) {
-                    if (node->builtin_id == SF_BUILTIN_INDEX) {
-                        u32 dom_idx = node->domain_node_idx;
-                        if (dom_idx == UINT32_MAX) {
-                            for (u32 j = 0; j < (u32)ir->node_count; ++j) if (ir->nodes[j].type == SF_NODE_OUTPUT) { dom_idx = j; break; }
-                        }
-                        if (dom_idx != UINT32_MAX && dom_idx != node_idx) *out = ir->nodes[dom_idx].out_info;
-                        if (out->dtype == SF_DTYPE_UNKNOWN) out->dtype = SF_DTYPE_F32;
-                    } else if (inputs[0] && out->ndim == 0) *out = inputs[0]->out_info;
+                else if (node->type == SF_NODE_INDEX_X || node->type == SF_NODE_INDEX_Y || node->type == SF_NODE_INDEX_Z) {
+                    u32 dom_idx = node->domain_node_idx;
+                    if (dom_idx == UINT32_MAX) {
+                        for (u32 j = 0; j < (u32)ir->node_count; ++j) if (ir->nodes[j].type == SF_NODE_OUTPUT) { dom_idx = j; break; }
+                    }
+                    if (dom_idx != UINT32_MAX && dom_idx != node_idx) *out = ir->nodes[dom_idx].out_info;
+                    if (out->dtype == SF_DTYPE_UNKNOWN) out->dtype = SF_DTYPE_F32;
+                } else if (node->type == SF_NODE_INPUT) {
+                    if (inputs[0] && out->ndim == 0) *out = inputs[0]->out_info;
                     else if (out->ndim == 0) *out = node->const_info;
                 } else if (node->type == SF_NODE_OUTPUT) {
                     if (out->ndim == 0 && inputs[0]) *out = inputs[0]->out_info;
@@ -112,7 +111,7 @@ bool sf_pass_analyze(sf_graph_ir* ir, sf_ir_node** sorted_nodes, size_t count, s
         u32 dom_idx = (node->domain_node_idx == UINT32_MAX) ? node_idx : node->domain_node_idx;
         size_t task_cnt = sf_shape_calc_count(ir->nodes[dom_idx].out_info.shape, ir->nodes[dom_idx].out_info.ndim);
         
-        bool is_generator = (node->builtin_id != SF_BUILTIN_NONE);
+        bool is_generator = (node->type == SF_NODE_INDEX_X || node->type == SF_NODE_INDEX_Y || node->type == SF_NODE_INDEX_Z);
         bool has_spatial_input = false;
         for (int k = 0; k < 4; ++k) if (inputs[k] && inputs[k]->is_spatial) has_spatial_input = true;
 
