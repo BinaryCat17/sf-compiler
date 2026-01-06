@@ -1,7 +1,7 @@
 # --- Metadata Generation ---
 find_package(Python3 REQUIRED)
 set(ISA_GEN_PY "${CMAKE_CURRENT_SOURCE_DIR}/../../sf-spec/tools/isa_gen.py")
-set(ISA_JSON "${CMAKE_CURRENT_SOURCE_DIR}/../../sf-spec/isa/isa.json")
+set(ISA_JSON "${CMAKE_CURRENT_SOURCE_DIR}/../../sf-spec/tools/metadata/isa.json")
 set(METADATA_TMPL "${CMAKE_CURRENT_SOURCE_DIR}/../tools/templates/sf_op_metadata.c.j2")
 set(METADATA_C "${CMAKE_CURRENT_SOURCE_DIR}/../tools/generated/sf_op_metadata.c")
 
