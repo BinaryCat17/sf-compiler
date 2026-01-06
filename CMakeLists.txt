@@ -4,15 +4,46 @@ project(sf-compiler LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# Temporary: linking to sf-spec as a subdirectory for local development
-# In the future, this will be find_package(sf-spec REQUIRED)
-if (NOT TARGET sf_base)
-    add_subdirectory(../sf-spec/base sf-spec-base)
-endif()
-if (NOT TARGET sf_isa)
-    add_subdirectory(../sf-spec/isa sf-spec-isa)
-endif()
+# Dependencies
+find_package(sf-spec REQUIRED)
 
 # Modules
 add_subdirectory(compiler)
 add_subdirectory(sfc)
+
+# --- Installation & Export ---
+
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+# Install targets
+install(TARGETS compiler sfc
+    EXPORT SionFlowCompilerTargets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+# Install headers
+install(DIRECTORY compiler/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+# Generate and install the export file
+install(EXPORT SionFlowCompilerTargets
+    FILE SionFlowCompilerTargets.cmake
+    NAMESPACE SionFlow::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/sf-compiler
+)
+
+# Create the config file
+configure_package_config_file(
+    cmake/sf-compiler-config.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/sf-compiler-config.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/sf-compiler
+)
+
+# Install the config file
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/sf-compiler-config.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/sf-compiler
+)

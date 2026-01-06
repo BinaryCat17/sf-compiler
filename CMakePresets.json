@@ -1,0 +1,38 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "default",
+      "hidden": true,
+      "generator": "Unix Makefiles",
+      "binaryDir": "$env{SIONFLOW_BUILD_ROOT}/sf-compiler/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "vcpkg",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/../sf-spec/vcpkg-ports"
+      }
+    },
+    {
+      "name": "x64-linux",
+      "inherits": ["default", "vcpkg"],
+      "displayName": "x64 Linux Debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "x64-windows",
+      "inherits": ["vcpkg"],
+      "displayName": "x64 Windows Debug",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "$env{SIONFLOW_BUILD_ROOT}/sf-compiler/${presetName}"
+    }
+  ]
+}
