@@ -26,16 +26,6 @@ void sf_compiler_diag_report(sf_compiler_diag* diag, sf_source_loc loc, const ch
 
 // --- IR Definitions ---
 
-typedef enum {
-    SF_NODE_UNKNOWN = 0,
-    
-#define SF_OP(suffix, name, op_suffix, cat, strat, in_mask, out_mask, out_rule, shape_rule, access_rule, p1, p2, p3, p4, ktype, kernel, karity) SF_NODE_##suffix,
-    SF_OP_LIST
-#undef SF_OP
-
-    SF_NODE_COUNT
-} sf_node_type;
-
 typedef struct {
     const char* name;
     u16 opcode;

@@ -1,0 +1,23 @@
+# SionFlow Generated Files
+tools/generated/
+__pycache__/
+
+# Build directories
+out/
+build/
+bin/
+lib/
+
+# Dependency Management
+vcpkg_installed/
+.cache/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.user
+
+# CMake User Presets
+CMakeUserPresets.json
