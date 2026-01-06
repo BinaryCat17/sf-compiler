@@ -10,6 +10,10 @@
 
 static sf_node_type get_node_type(const char* type_str) {
     if (!type_str) return SF_NODE_UNKNOWN;
+    
+    // Alias for Index nodes (mapped to X/Y/Z based on axis)
+    if (strcmp(type_str, "Index") == 0) return SF_NODE_INDEX_X;
+
     for (int i = 1; i < SF_NODE_COUNT; ++i) {
         if (strcmp(type_str, SF_OP_METADATA[i].name) == 0) return (sf_node_type)i;
     }
@@ -137,16 +141,10 @@ static bool parse_node_attributes(sf_ir_node* dst, const sf_json_value* data, co
             
             if (axis == 1) {
                 dst->type = SF_NODE_INDEX_Y;
-                dst->builtin_id = 1;
-                dst->builtin_axis = 1;
             } else if (axis == 2) {
                 dst->type = SF_NODE_INDEX_Z;
-                dst->builtin_id = 1;
-                dst->builtin_axis = 2;
             } else {
                 dst->type = SF_NODE_INDEX_X;
-                dst->builtin_id = 1;
-                dst->builtin_axis = 0;
             }
 
             dst->out_info.dtype = SF_DTYPE_F32;

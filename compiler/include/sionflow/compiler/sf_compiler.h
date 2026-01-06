@@ -60,10 +60,6 @@ typedef struct {
     sf_type_info const_info;
     void* const_data; 
 
-    const char* provider; // Optional: "host.index", etc.
-    u16 builtin_id;      // sf_builtin_id (parsed from provider)
-    u8 builtin_axis;     // For host.index.N
-
     // Sub-Graph Data
     const char* sub_graph_path; // For SF_NODE_CALL
 
