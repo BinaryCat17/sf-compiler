@@ -91,8 +91,39 @@ static bool lower_node(const sf_json_value* node_val, sf_ir_node* ir_node, sf_ar
     // I need to read more of this file to find where parse_const_tensor is called.
 }
 
+static bool is_field_allowed(sf_node_type type, const char* key) {
+    if (type == SF_NODE_INPUT || type == SF_NODE_OUTPUT) {
+        const char* allowed[] = {"shape", "dtype", "readonly", "persistent", "screen_size", "output", "name", NULL};
+        for (int i = 0; allowed[i]; ++i) if (strcmp(key, allowed[i]) == 0) return true;
+    } else if (type == SF_NODE_INDEX_X || type == SF_NODE_INDEX_Y || type == SF_NODE_INDEX_Z) {
+        const char* allowed[] = {"axis", "dtype", NULL};
+        for (int i = 0; allowed[i]; ++i) if (strcmp(key, allowed[i]) == 0) return true;
+    } else if (type == SF_NODE_CONST) {
+        const char* allowed[] = {"value", "meta", NULL};
+        for (int i = 0; allowed[i]; ++i) if (strcmp(key, allowed[i]) == 0) return true;
+    } else if (type == SF_NODE_CALL) {
+        const char* allowed[] = {"path", NULL};
+        for (int i = 0; allowed[i]; ++i) if (strcmp(key, allowed[i]) == 0) return true;
+    } else if (type == SF_NODE_RANGE) {
+        const char* allowed[] = {"dtype", NULL};
+        for (int i = 0; allowed[i]; ++i) if (strcmp(key, allowed[i]) == 0) return true;
+    }
+    return false;
+}
+
 static bool parse_node_attributes(sf_ir_node* dst, const sf_json_value* data, const char* base_path, sf_arena* arena, sf_compiler_diag* diag) {
     if (!data) return true;
+
+    // Strict Validation: Fail on any unknown field
+    if (data->type == SF_JSON_VAL_OBJECT) {
+        for (size_t i = 0; i < data->as.object.count; ++i) {
+            if (!is_field_allowed(dst->type, data->as.object.keys[i])) {
+                sf_compiler_diag_report(diag, dst->loc, "Unknown or unsupported parameter '%s' for node type '%s'", 
+                    data->as.object.keys[i], SF_OP_METADATA[dst->type].name);
+                return false;
+            }
+        }
+    }
 
     switch (dst->type) {
         case SF_NODE_INPUT:
@@ -145,7 +176,9 @@ static bool parse_node_attributes(sf_ir_node* dst, const sf_json_value* data, co
         case SF_NODE_INDEX_X:
         case SF_NODE_INDEX_Y:
         case SF_NODE_INDEX_Z: {
-            // This case handles the "Index" type from JSON and maps it to specific X/Y/Z nodes
+            const sf_json_value* v_dtype = sf_json_get_field(data, "dtype");
+            dst->out_info.dtype = v_dtype ? sf_dtype_from_str(v_dtype->as.s) : SF_DTYPE_F32;
+
             const sf_json_value* v_axis = sf_json_get_field(data, "axis");
             int axis = (v_axis && v_axis->type == SF_JSON_VAL_NUMBER) ? (int)v_axis->as.n : 0;
             
@@ -157,8 +190,7 @@ static bool parse_node_attributes(sf_ir_node* dst, const sf_json_value* data, co
                 dst->type = SF_NODE_INDEX_X;
             }
 
-            dst->out_info.dtype = SF_DTYPE_F32;
-            dst->out_info.ndim = 0; // Scalar per element
+            dst->out_info.ndim = 0; // Scalar per element, will expand to domain in analyze pass
             break;
         }
         case SF_NODE_CONST: {

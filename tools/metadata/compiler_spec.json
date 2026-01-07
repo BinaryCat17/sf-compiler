@@ -13,7 +13,10 @@
     { "id": "domain",    "name": "Domain Splitting", "func": "sf_pass_domain_split" }
   ],
   "aliases": [
-    { "from": "Index", "to": "INDEX_X", "reason": "Default index axis" }
+    { "from": "Index", "to": "INDEX_X", "reason": "Default index axis" },
+    { "from": "Range", "to": "RANGE", "reason": "Sequental generator" },
+    { "from": "Sum",   "to": "REDUCE_SUM", "reason": "Short name for reduction" },
+    { "from": "Mean",  "to": "MEAN", "reason": "Short name for reduction" }
   ],
   "fusion_rules": [
     {

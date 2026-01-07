@@ -22,6 +22,13 @@ static bool check_broadcast(sf_ir_node* node, const sf_type_info* a, const sf_ty
 
 static bool resolve_same_as_s1(sf_ir_node* node, sf_ir_node* inputs[4], sf_compiler_diag* diag) {
     if (!inputs[0]) return false;
+    
+    // If the node (like Output) already has an explicit shape from JSON,
+    // we keep it but could validate compatibility here.
+    if (node->out_info.ndim > 0) {
+        return true;
+    }
+
     node->out_info.ndim = inputs[0]->out_info.ndim;
     memcpy(node->out_info.shape, inputs[0]->out_info.shape, sizeof(int32_t) * SF_MAX_DIMS);
     return true;
@@ -65,13 +72,28 @@ static bool resolve_scalar(sf_ir_node* node, sf_ir_node* inputs[4], sf_compiler_
     return true;
 }
 
+static bool resolve_range(sf_ir_node* node, sf_ir_node* inputs[4], sf_compiler_diag* diag) {
+    if (!inputs[0]) return false;
+    node->out_info.ndim = 1;
+    node->out_info.shape[0] = 1;
+    
+    if (inputs[0]->type == SF_NODE_CONST && inputs[0]->const_data) {
+        f32 val = 0;
+        if (inputs[0]->const_info.dtype == SF_DTYPE_F32) val = *(f32*)inputs[0]->const_data;
+        else if (inputs[0]->const_info.dtype == SF_DTYPE_I32) val = (f32)*(i32*)inputs[0]->const_data;
+        node->out_info.shape[0] = (i32)val;
+    }
+    return true;
+}
+
 static const sf_shape_resolver SHAPE_RESOLVERS[SF_SHAPE_COUNT] = {
     [SF_SHAPE_SAME_AS_S1] = resolve_same_as_s1,
     [SF_SHAPE_SAME_AS_S2] = resolve_same_as_s2,
     [SF_SHAPE_BROADCAST]  = resolve_broadcast,
     [SF_SHAPE_MATMUL]     = resolve_matmul,
     [SF_SHAPE_DOT]        = resolve_dot,
-    [SF_SHAPE_SCALAR]     = resolve_scalar
+    [SF_SHAPE_SCALAR]     = resolve_scalar,
+    [SF_SHAPE_RANGE]      = resolve_range
 };
 
 bool sf_pass_analyze(sf_pass_ctx* ctx, sf_compiler_diag* diag) {
@@ -131,7 +153,8 @@ bool sf_pass_analyze(sf_pass_ctx* ctx, sf_compiler_diag* diag) {
         
         node->is_spatial = (task_cnt > 1) || is_generator || has_spatial_input;
 
-        if (is_generator && dom_idx != UINT32_MAX) {
+        // Generators usually follow the domain, unless they define it (like Range)
+        if (is_generator && dom_idx != UINT32_MAX && !(meta->flags & SF_OP_FLAG_FORCE_DOM)) {
             node->out_info = ir->nodes[dom_idx].out_info;
         }
         

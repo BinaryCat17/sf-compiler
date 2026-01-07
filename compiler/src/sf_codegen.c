@@ -90,7 +90,6 @@ bool sf_codegen_emit(sf_program* prog, sf_graph_ir* ir, sf_ir_node** sorted, siz
             sym->name_hash = sf_fnv1a_hash(sym->name);
             sym->register_idx = r_idx;
             sym->related_name_hash = 0;
-            sym->provider[0] = '\0';
             
             sym->flags = (node->type == SF_NODE_INPUT) ? SF_SYMBOL_FLAG_INPUT : 
                          (node->type == SF_NODE_OUTPUT) ? SF_SYMBOL_FLAG_OUTPUT : 0;

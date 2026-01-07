@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
     if (strcmp(ext, "mfapp") == 0) {
         sf_compiler_manifest manifest;
         if (sf_compiler_load_manifest(input_path, &manifest, &arena)) {
-            app_ir = manifest.app_ir;
+            success = true;
             for (u32 i = 0; i < manifest.kernel_count; ++i) {
                 SF_LOG_INFO("Compiling kernel \'%s\'...", manifest.kernels[i].id);
                 sf_compiler_diag diag; sf_compiler_diag_init(&diag, &arena);
@@ -55,24 +55,36 @@ int main(int argc, char** argv) {
                     sf_program* prog = sf_compile(&k_ir, &arena, &diag);
                     if (prog) {
                         sections[section_count++] = (sf_section_desc){ manifest.kernels[i].id, SF_SECTION_PROGRAM, prog, 0 };
-                    } else success = false;
-                } else success = false;
-            }
-            // Embed assets
-            for (u32 i = 0; i < manifest.asset_count; ++i) {
-                size_t f_size = 0;
-                void* f_data = sf_file_read_bin(manifest.assets[i].path, &f_size);
-                if (f_data) {
-                    void* arena_data = sf_arena_alloc((sf_allocator*)&arena, f_size);
-                    memcpy(arena_data, f_data, f_size);
-                    free(f_data);
-                    sections[section_count++] = (sf_section_desc){ manifest.assets[i].name, manifest.assets[i].type, arena_data, (u32)f_size };
-                    SF_LOG_INFO("Embedded asset \'%s\'", manifest.assets[i].name);
+                    } else {
+                        success = false;
+                        break;
+                    }
+                } else {
+                    success = false;
+                    break;
                 }
             }
-            // Embed pipeline
-            sections[section_count++] = (sf_section_desc){ "pipeline", SF_SECTION_PIPELINE, manifest.raw_json, manifest.raw_json_size };
-            success = true;
+            
+            if (success) {
+                // Embed assets
+                for (u32 i = 0; i < manifest.asset_count; ++i) {
+                    size_t f_size = 0;
+                    void* f_data = sf_file_read_bin(manifest.assets[i].path, &f_size);
+                    if (f_data) {
+                        void* arena_data = sf_arena_alloc((sf_allocator*)&arena, f_size);
+                        memcpy(arena_data, f_data, f_size);
+                        free(f_data);
+                        sections[section_count++] = (sf_section_desc){ manifest.assets[i].name, manifest.assets[i].type, arena_data, (u32)f_size };
+                        SF_LOG_INFO("Embedded asset \'%s\'", manifest.assets[i].name);
+                    } else {
+                        SF_LOG_ERROR("Failed to read asset: %s", manifest.assets[i].path);
+                        success = false;
+                        break;
+                    }
+                }
+                // Embed pipeline
+                sections[section_count++] = (sf_section_desc){ "pipeline", SF_SECTION_PIPELINE, manifest.raw_json, manifest.raw_json_size };
+            }
         }
     } else {
         SF_LOG_INFO("Compiling single graph %s...", input_path);
