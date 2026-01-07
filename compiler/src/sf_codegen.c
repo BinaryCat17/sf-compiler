@@ -41,6 +41,9 @@ bool sf_codegen_emit(sf_program* prog, sf_graph_ir* ir, sf_ir_node** sorted, siz
     u8 current_strategy = SF_STRATEGY_DEFAULT;
     bool needs_sync_scratch = false;
 
+    // Static Barrier Planning
+    uint8_t modified_regs[SF_MAX_REGISTERS / 8] = {0};
+
     for (size_t i = 0; i < sorted_count; ++i) {
         sf_ir_node* node = sorted[i];
         u32 node_idx = (u32)(node - ir->nodes); 
@@ -117,6 +120,7 @@ bool sf_codegen_emit(sf_program* prog, sf_graph_ir* ir, sf_ir_node** sorted, siz
             if (needs_split || task_count == 0) {
                 tasks[task_count].start_inst = start_instr_idx;
                 tasks[task_count].strategy = meta->strategy;
+                tasks[task_count].flags = 0;
                 u32 dom_node_idx = (node->domain_node_idx == UINT32_MAX) ? node_idx : node->domain_node_idx;
                 tasks[task_count].domain_reg = ir->nodes[dom_node_idx].out_reg_idx;
                 tasks[task_count].binding_offset = total_binding_count;
@@ -133,20 +137,42 @@ bool sf_codegen_emit(sf_program* prog, sf_graph_ir* ir, sf_ir_node** sorted, siz
                            inputs[3] ? inputs[3]->out_reg_idx : 0 };
             
             sf_task* curr_task = &tasks[task_count - 1];
+
+            // --- Barrier Planning (Static RAW Analysis) ---
+            // If any input register of this task has been modified by a previous task,
+            // we must ensure there is a barrier before this task starts.
+            for (int k = 1; k < 5; ++k) {
+                if (!inputs[k-1]) continue;
+                u16 r = ops[k];
+                if (r < SF_MAX_REGISTERS && (modified_regs[r / 8] & (1 << (r % 8)))) {
+                    curr_task->flags |= SF_TASK_FLAG_BARRIER;
+                    memset(modified_regs, 0, sizeof(modified_regs));
+                    break;
+                }
+            }
+
             for (int k = 0; k < 5; ++k) {
                 if (k > 0 && !inputs[k-1]) continue;
                 u16 r = ops[k];
                 bool found = false;
+                u16 current_flags = (k == 0) ? SF_BINDING_FLAG_WRITE : SF_BINDING_FLAG_READ;
+                if (is_reduction && k == 0) current_flags |= SF_BINDING_FLAG_REDUCTION;
+
+                // Track writes for barrier planning
+                if (k == 0 && r < SF_MAX_REGISTERS) {
+                    modified_regs[r / 8] |= (1 << (r % 8));
+                }
+
                 for (u32 b = 0; b < curr_task->binding_count; ++b) {
                     if (bindings[curr_task->binding_offset + b].reg_idx == r) {
-                        if (is_reduction && k == 0) bindings[curr_task->binding_offset + b].flags |= SF_BINDING_FLAG_REDUCTION;
+                        bindings[curr_task->binding_offset + b].flags |= current_flags;
                         found = true; break;
                     }
                 }
                 if (!found) {
                     sf_bin_task_binding* b = &bindings[total_binding_count++];
                     b->reg_idx = r;
-                    b->flags = (is_reduction && k == 0) ? SF_BINDING_FLAG_REDUCTION : 0;
+                    b->flags = current_flags;
                     curr_task->binding_count++;
                 }
             }

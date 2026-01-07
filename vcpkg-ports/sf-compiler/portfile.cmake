@@ -2,7 +2,7 @@ set(SOURCE_PATH "${CMAKE_CURRENT_LIST_DIR}/../../../sf-compiler")
 
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
-    GENERATOR "Unix Makefiles"
+    GENERATOR "Ninja"
 )
 
 vcpkg_cmake_install()

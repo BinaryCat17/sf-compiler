@@ -135,8 +135,8 @@ static bool parse_node_attributes(sf_ir_node* dst, const sf_json_value* data, co
                      }
                 }
                 sf_shape_calc_strides(&dst->const_info);
-                // For Output nodes, we also copy this to out_info initially
-                if (dst->type == SF_NODE_OUTPUT) {
+                // For Input and Output nodes, we copy this to out_info initially
+                if (dst->type == SF_NODE_INPUT || dst->type == SF_NODE_OUTPUT) {
                     dst->out_info = dst->const_info;
                 }
             }
@@ -163,7 +163,10 @@ static bool parse_node_attributes(sf_ir_node* dst, const sf_json_value* data, co
         }
         case SF_NODE_CONST: {
             const sf_json_value* v_val = sf_json_get_field(data, "value");
-            if (v_val) parse_const_tensor(v_val, data, &dst->const_info, &dst->const_data, arena);
+            if (v_val) {
+                parse_const_tensor(v_val, data, &dst->const_info, &dst->const_data, arena);
+                dst->out_info = dst->const_info;
+            }
             break;
         }
         case SF_NODE_CALL: {

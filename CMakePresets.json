@@ -4,10 +4,11 @@
     {
       "name": "default",
       "hidden": true,
-      "generator": "Unix Makefiles",
+      "generator": "Ninja",
       "binaryDir": "$env{SIONFLOW_BUILD_ROOT}/sf-compiler/${presetName}",
       "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_C_COMPILER_LAUNCHER": "ccache"
       }
     },
     {
@@ -23,8 +24,7 @@
       "inherits": ["default", "vcpkg"],
       "displayName": "x64 Linux Debug",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_PROJECT_INCLUDE_BEFORE": "${sourceDir}/../sf-spec/tools/dev_init.cmake"
+        "CMAKE_BUILD_TYPE": "Debug"
       }
     },
     {
