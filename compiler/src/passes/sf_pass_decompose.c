@@ -44,7 +44,6 @@ bool sf_pass_decompose(sf_pass_ctx* ctx, sf_compiler_diag* diag) {
                 dst->type = step->type;
                 dst->loc = node->loc;
                 dst->domain_node_idx = node->domain_node_idx;
-                // Inherit other properties if necessary
             }
 
             // 2. Map Connections (Internal)
@@ -83,174 +82,76 @@ bool sf_pass_decompose(sf_pass_ctx* ctx, sf_compiler_diag* diag) {
                 }
             }
 
-                        // 3. Re-route External Links (and duplicate if needed)
-
-                        u32 final_output_idx = UINT32_MAX;
-
-                        for (u32 j = 0; j < rule->step_count; ++j) {
-
-                            if (strcmp(rule->output_node_id, rule->steps[j].id) == 0) {
-
-                                final_output_idx = base_idx + j;
-
-                                break;
-
-                            }
-
-                        }
-
-            
-
-                        u32 original_link_count = (u32)ir->link_count;
-
-                        for (u32 l = 0; l < original_link_count; ++l) {
-
-                            sf_ir_link* link = &ir->links[l];
-
-                            if (link->dst_node_idx == i) {
-
-                                u32 match_count = 0;
-
-                                u32 target_nodes[16];
-
-                                u32 target_ports[16];
-
-                                
-
-                                for (u32 s = 0; s < rule->step_count; ++s) {
-
-                                    for (u32 p = 0; p < 4; ++p) {
-
-                                        if (rule->steps[s].input_map[p] && strcmp(rule->steps[s].input_map[p], link->dst_port_name) == 0) {
-
-                                            if (match_count < 16) {
-
-                                                target_nodes[match_count] = base_idx + s;
-
-                                                target_ports[match_count] = p;
-
-                                                match_count++;
-
-                                            }
-
-                                        }
-
-                                    }
-
-                                }
-
-                                
-
-                                if (match_count > 0) {
-
-                                    // Keep track of original source for duplication
-
-                                    u32 src_node = link->src_node_idx;
-
-                                    u32 src_port = link->src_port;
-
-                                    const char* src_port_name = link->src_port_name;
-
-            
-
-                                    // First match: reuse existing link
-
-                                    const sf_op_metadata* meta0 = &SF_OP_METADATA[ir->nodes[target_nodes[0]].type];
-
-                                    link->dst_node_idx = target_nodes[0];
-
-                                    link->dst_port = target_ports[0];
-
-                                    link->dst_port_name = sf_arena_strdup(arena, meta0->ports[target_ports[0]]);
-
-                                    
-
-                                                            // Subsequent matches: create new links
-
-                                    
-
-                                                            for (u32 m = 1; m < match_count; ++m) {
-
-                                    
-
-                                                                if (ir->link_count >= ir->link_cap) {
-
-                                    
-
-                                                                    SF_REPORT(diag, NULL, "Decomposition Error: Link capacity exceeded during duplication");
-
-                                    
-
-                                                                    return false;
-
-                                    
-
-                                                                }
-
-                                    
-
-                                                                sf_ir_link* new_link = &ir->links[ir->link_count++];
-
-                                    
-
-                                                                new_link->src_node_idx = src_node;
-
-                                    
-
-                                                                new_link->src_port = src_port;
-
-                                    
-
-                                                                new_link->src_port_name = src_port_name;
-
-                                    
-
-                                                                
-
-                                    
-
-                                                                const sf_op_metadata* metam = &SF_OP_METADATA[ir->nodes[target_nodes[m]].type];
-
-                                    
-
-                                    
-
-                                        new_link->dst_node_idx = target_nodes[m];
-
-                                        new_link->dst_port = target_ports[m];
-
-                                        new_link->dst_port_name = sf_arena_strdup(arena, metam->ports[target_ports[m]]);
-
-                                    }
-
-                                }
-
-                            } else if (link->src_node_idx == i) {
-
-                                link->src_node_idx = final_output_idx;
-
-                                link->src_port = 0;
-
-                                link->src_port_name = "out";
-
-                            }
-
-                        }
-
-            
-
-                        node->type = SF_NODE_UNKNOWN;
-
-                        changed = true;
-
-                    }
-
+            // 3. Re-route External Links (and duplicate if needed)
+            u32 final_output_idx = UINT32_MAX;
+            for (u32 j = 0; j < rule->step_count; ++j) {
+                if (strcmp(rule->output_node_id, rule->steps[j].id) == 0) {
+                    final_output_idx = base_idx + j;
+                    break;
                 }
-
-            
-
-                return true;
-
             }
 
-            
+            u32 original_link_count = (u32)ir->link_count;
+            for (u32 l = 0; l < original_link_count; ++l) {
+                sf_ir_link* link = &ir->links[l];
+                if (link->dst_node_idx == i) {
+                    u32 match_count = 0;
+                    u32 target_nodes[16];
+                    u32 target_ports[16];
+
+                    for (u32 s = 0; s < rule->step_count; ++s) {
+                        for (u32 p = 0; p < 4; ++p) {
+                            if (rule->steps[s].input_map[p] && strcmp(rule->steps[s].input_map[p], link->dst_port_name) == 0) {
+                                if (match_count < 16) {
+                                    target_nodes[match_count] = base_idx + s;
+                                    target_ports[match_count] = p;
+                                    match_count++;
+                                }
+                            }
+                        }
+                    }
+
+                    if (match_count > 0) {
+                        // Keep track of original source for duplication
+                        u32 src_node = link->src_node_idx;
+                        u32 src_port = link->src_port;
+                        const char* src_port_name = link->src_port_name;
+
+                        // First match: reuse existing link
+                        const sf_op_metadata* meta0 = &SF_OP_METADATA[ir->nodes[target_nodes[0]].type];
+                        link->dst_node_idx = target_nodes[0];
+                        link->dst_port = target_ports[0];
+                        link->dst_port_name = sf_arena_strdup(arena, meta0->ports[target_ports[0]]);
+
+                        // Subsequent matches: create new links
+                        for (u32 m = 1; m < match_count; ++m) {
+                            if (ir->link_count >= ir->link_cap) {
+                                SF_REPORT(diag, NULL, "Decomposition Error: Link capacity exceeded during duplication");
+                                return false;
+                            }
+
+                            sf_ir_link* new_link = &ir->links[ir->link_count++];
+                            new_link->src_node_idx = src_node;
+                            new_link->src_port = src_port;
+                            new_link->src_port_name = src_port_name;
+
+                            const sf_op_metadata* metam = &SF_OP_METADATA[ir->nodes[target_nodes[m]].type];
+                            new_link->dst_node_idx = target_nodes[m];
+                            new_link->dst_port = target_ports[m];
+                            new_link->dst_port_name = sf_arena_strdup(arena, metam->ports[target_ports[m]]);
+                        }
+                    }
+                } else if (link->src_node_idx == i) {
+                    link->src_node_idx = final_output_idx;
+                    link->src_port = 0;
+                    link->src_port_name = "out";
+                }
+            }
+
+            node->type = SF_NODE_UNKNOWN;
+            changed = true;
+        }
+    }
+
+    return true;
+}

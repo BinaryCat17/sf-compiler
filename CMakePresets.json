@@ -23,7 +23,8 @@
       "inherits": ["default", "vcpkg"],
       "displayName": "x64 Linux Debug",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_PROJECT_INCLUDE_BEFORE": "${sourceDir}/../sf-spec/tools/dev_init.cmake"
       }
     },
     {
@@ -34,5 +35,8 @@
       "architecture": "x64",
       "binaryDir": "$env{SIONFLOW_BUILD_ROOT}/sf-compiler/${presetName}"
     }
+  ],
+  "buildPresets": [
+    { "name": "x64-linux", "configurePreset": "x64-linux" }
   ]
 }

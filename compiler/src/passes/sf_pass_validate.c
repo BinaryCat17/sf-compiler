@@ -5,16 +5,9 @@
 #include <sionflow/base/sf_shape.h>
 #include <string.h>
 
-static bool shapes_match(const sf_type_info* a, const sf_type_info* b) {
-    if (a->ndim != b->ndim) return false;
-    for (int i = 0; i < a->ndim; ++i) {
-        if (a->shape[i] != b->shape[i]) return false;
-    }
-    return true;
-}
-
-static bool is_scalar(const sf_type_info* info) {
-    return (info->ndim == 0 || (info->ndim == 1 && info->shape[0] == 1));
+static bool check_broadcast_compat(const sf_type_info* a, const sf_type_info* b) {
+    sf_type_info dummy;
+    return sf_shape_broadcast(a, b, &dummy);
 }
 
 bool sf_pass_validate(sf_pass_ctx* ctx, sf_compiler_diag* diag) {
@@ -76,7 +69,7 @@ bool sf_pass_validate(sf_pass_ctx* ctx, sf_compiler_diag* diag) {
                 int axis1 = (asrt->a1 < 0) ? (info1->ndim + asrt->a1) : asrt->a1;
                 
                 if (axis0 < 0 || axis0 >= info0->ndim || axis1 < 0 || axis1 >= info1->ndim) {
-                     SF_REPORT_NODE(diag, node, "Validation Error: Axis out of bounds in assertion for '%s'", node->id);
+                     SF_REPORT_NODE(diag, node, "Validation Error: Axis %d/%d out of bounds in assertion for '%s'", axis0, axis1, node->id);
                      success = false;
                      continue;
                 }
@@ -89,13 +82,10 @@ bool sf_pass_validate(sf_pass_ctx* ctx, sf_compiler_diag* diag) {
             }
             else if (asrt->type == SF_ASSERT_BROADCAST_COMPATIBLE) {
                 if (!inputs[0] || !inputs[1]) continue;
-                const sf_type_info* info1 = &inputs[0]->out_info;
-                const sf_type_info* info2 = &inputs[1]->out_info;
-                
-                if (!is_scalar(info1) && !is_scalar(info2) && !shapes_match(info1, info2)) {
+                if (!check_broadcast_compat(&inputs[0]->out_info, &inputs[1]->out_info)) {
                     char s1[64], s2[64];
-                    sf_shape_format(info1, s1, sizeof(s1));
-                    sf_shape_format(info2, s2, sizeof(s2));
+                    sf_shape_format(&inputs[0]->out_info, s1, sizeof(s1));
+                    sf_shape_format(&inputs[1]->out_info, s2, sizeof(s2));
                     SF_REPORT_NODE(diag, node, "Shape Mismatch: Cannot broadcast inputs of node '%s' (%s vs %s)", node->id, s1, s2);
                     success = false;
                 }
