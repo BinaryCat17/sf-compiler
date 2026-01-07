@@ -12,6 +12,9 @@ void print_usage() {
 }
 
 int main(int argc, char** argv) {
+    sf_log_init();
+    sf_log_set_global_level(SF_LOG_LEVEL_DEBUG);
+
     if (argc < 2) {
         print_usage();
         return 1;

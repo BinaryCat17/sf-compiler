@@ -47,6 +47,16 @@
         { "id": "div", "type": "DIV", "inputs": { "a": "sum", "b": "size" } }
       ],
       "output": "div"
+    },
+    {
+      "id": "DECOMPOSE_MEAN_STABLE",
+      "target": "MEAN_STABLE",
+      "replace_with_subgraph": [
+        { "id": "sum", "type": "REDUCE_SUM_STABLE", "inputs": { "in": "in" } },
+        { "id": "size", "type": "SIZE", "inputs": { "in": "in" } },
+        { "id": "div", "type": "DIV", "inputs": { "a": "sum", "b": "size" } }
+      ],
+      "output": "div"
     }
   ],
   "node_constraints": {
@@ -71,6 +81,7 @@
     "INDEX_Y": { "flags": ["GENERATOR", "SPATIAL"] },
     "INDEX_Z": { "flags": ["GENERATOR", "SPATIAL"] },
     "REDUCE_SUM": { "flags": ["REDUCER"] },
+    "REDUCE_SUM_STABLE": { "flags": ["REDUCER"] },
     "SIZE": { "flags": ["REDUCER"] },
     "GATHER": { "flags": ["MEMORY"] },
     "SLICE": { "flags": ["MEMORY"] },

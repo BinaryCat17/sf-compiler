@@ -5,7 +5,9 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # Dependencies
-find_package(sf-spec REQUIRED)
+if(NOT SF_WORKSPACE_MODE)
+    find_package(sf-spec REQUIRED)
+endif()
 
 # Modules
 add_subdirectory(compiler)
