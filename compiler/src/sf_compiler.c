@@ -135,11 +135,18 @@ static size_t _write_program(const sf_program* prog, FILE* f) {
         if (!_safe_write(&desc, sizeof(sf_bin_tensor_desc), 1, f)) return 0;
     }
 
-    // 5. Tensor Data Blob
+    // 6. Push Constant Block
+    if (prog->meta.push_constants_size > 0) {
+        if (!_safe_write(prog->push_constants_data, 1, prog->meta.push_constants_size, f)) return 0;
+    }
+
+    // 7. Remaining Tensor Data (Non-scalars)
     for (u32 i = 0; i < prog->meta.tensor_count; ++i) {
         void* data_ptr = prog->tensor_data[i];
         if (data_ptr) {
             sf_type_info* info = &prog->tensor_infos[i];
+            if (info->ndim == 0) continue; // Skip scalar constants (already in PC block)
+            
             size_t sz = sf_shape_calc_bytes(info->dtype, info->shape, info->ndim);
             if (!_safe_write(data_ptr, 1, sz, f)) return 0;
         }

@@ -44,6 +44,39 @@ bool sf_codegen_emit(sf_program* prog, sf_graph_ir* ir, sf_ir_node** sorted, siz
     // Static Barrier Planning
     uint8_t modified_regs[SF_MAX_REGISTERS / 8] = {0};
 
+    // --- Push Constant Optimization (Phase 1: Count & Size) ---
+    u32 push_constants_size = 0;
+    for (u16 r = 0; r < prog->meta.tensor_count; ++r) {
+        for (size_t i = 0; i < sorted_count; ++i) {
+            if (sorted[i]->out_reg_idx == r && sorted[i]->type == SF_NODE_CONST && sorted[i]->out_info.ndim == 0) {
+                push_constants_size += (u32)sf_dtype_size(sorted[i]->out_info.dtype);
+                break;
+            }
+        }
+    }
+    
+    u8* pc_block = (push_constants_size > 0) ? SF_ARENA_PUSH(arena, u8, push_constants_size) : NULL;
+    u32 pc_offset = 0;
+    prog->meta.push_constants_size = push_constants_size;
+    prog->push_constants_data = pc_block;
+
+    // Phase 2: Fill PC Block in register order
+    if (pc_block) {
+        for (u16 r = 0; r < prog->meta.tensor_count; ++r) {
+            for (size_t i = 0; i < sorted_count; ++i) {
+                if (sorted[i]->out_reg_idx == r && sorted[i]->type == SF_NODE_CONST && sorted[i]->out_info.ndim == 0) {
+                    size_t sz = sf_dtype_size(sorted[i]->out_info.dtype);
+                    memcpy(pc_block + pc_offset, sorted[i]->const_data, sz);
+                    pc_offset += (u32)sz;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Reset offset for pointers assignment in the main loop
+    pc_offset = 0;
+
     for (size_t i = 0; i < sorted_count; ++i) {
         sf_ir_node* node = sorted[i];
         u32 node_idx = (u32)(node - ir->nodes); 
@@ -80,7 +113,23 @@ bool sf_codegen_emit(sf_program* prog, sf_graph_ir* ir, sf_ir_node** sorted, siz
         for (u8 k = 0; k < 4; ++k) if (meta->ports[k]) inputs[k] = sf_ir_find_input_by_name(ir, node_idx, meta->ports[k]);
 
         if (node->type == SF_NODE_CONST) {
-            prog->tensor_data[r_idx] = node->const_data;
+            if (node->out_info.ndim == 0 && pc_block) {
+                // Scalar Constant: Use pointer into grouped block
+                // We need to find the correct offset by summing sizes of previous scalars
+                u32 current_pc_offset = 0;
+                for (u16 r = 0; r < r_idx; ++r) {
+                    // Check if register 'r' was a scalar constant
+                    for (size_t j = 0; j < sorted_count; ++j) {
+                        if (sorted[j]->out_reg_idx == r && sorted[j]->type == SF_NODE_CONST && sorted[j]->out_info.ndim == 0) {
+                            current_pc_offset += (u32)sf_dtype_size(sorted[j]->out_info.dtype);
+                            break;
+                        }
+                    }
+                }
+                prog->tensor_data[r_idx] = pc_block + current_pc_offset;
+            } else {
+                prog->tensor_data[r_idx] = node->const_data;
+            }
             prog->tensor_flags[r_idx] |= SF_TENSOR_FLAG_CONSTANT;
         }
 
@@ -139,8 +188,6 @@ bool sf_codegen_emit(sf_program* prog, sf_graph_ir* ir, sf_ir_node** sorted, siz
             sf_task* curr_task = &tasks[task_count - 1];
 
             // --- Barrier Planning (Static RAW Analysis) ---
-            // If any input register of this task has been modified by a previous task,
-            // we must ensure there is a barrier before this task starts.
             for (int k = 1; k < 5; ++k) {
                 if (!inputs[k-1]) continue;
                 u16 r = ops[k];
@@ -158,7 +205,6 @@ bool sf_codegen_emit(sf_program* prog, sf_graph_ir* ir, sf_ir_node** sorted, siz
                 u16 current_flags = (k == 0) ? SF_BINDING_FLAG_WRITE : SF_BINDING_FLAG_READ;
                 if (is_reduction && k == 0) current_flags |= SF_BINDING_FLAG_REDUCTION;
 
-                // Track writes for barrier planning
                 if (k == 0 && r < SF_MAX_REGISTERS) {
                     modified_regs[r / 8] |= (1 << (r % 8));
                 }

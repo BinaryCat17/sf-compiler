@@ -8,6 +8,21 @@
       "kind": "filesystem",
       "path": "../sf-spec/vcpkg-ports",
       "packages": [ "sf-spec" ]
+    },
+    {
+      "kind": "filesystem",
+      "path": "vcpkg-ports",
+      "packages": [ "sf-compiler" ]
+    },
+    {
+      "kind": "filesystem",
+      "path": "../sf-runtime/vcpkg-ports",
+      "packages": [ "sf-runtime" ]
+    },
+    {
+      "kind": "filesystem",
+      "path": "../sf-backend-cpu/vcpkg-ports",
+      "packages": [ "sf-backend-cpu" ]
     }
   ]
 }
