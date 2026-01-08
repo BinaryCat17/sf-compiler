@@ -4,13 +4,16 @@
     "version": "1.0.0"
   },
   "pipeline": [
+    { "id": "inline",    "name": "Inlining",        "func": "sf_pass_inline_wrapper" },
     { "id": "decompose", "name": "Decomposition", "func": "sf_pass_decompose" },
+    { "id": "simplify",  "name": "Simplification", "func": "sf_pass_simplify" },
     { "id": "fuse",      "name": "Op Fusion",     "func": "sf_pass_fuse" },
     { "id": "sort",      "name": "Topological Sort", "func": "sf_pass_sort" },
-    { "id": "analyze",   "name": "Static Analysis", "func": "sf_pass_analyze" },
+    { "id": "analyze_pre", "name": "Pre-Analysis",   "func": "sf_pass_analyze" },
+    { "id": "domain",    "name": "Domain Splitting", "func": "sf_pass_domain_split" },
+    { "id": "analyze",   "name": "Static Analysis",  "func": "sf_pass_analyze" },
     { "id": "validate",  "name": "Validation",    "func": "sf_pass_validate" },
-    { "id": "liveness",  "name": "Liveness Analysis", "func": "sf_pass_liveness" },
-    { "id": "domain",    "name": "Domain Splitting", "func": "sf_pass_domain_split" }
+    { "id": "liveness",  "name": "Liveness Analysis", "func": "sf_pass_liveness" }
   ],
   "aliases": [
     { "from": "Index", "to": "INDEX_X", "reason": "Default index axis" },

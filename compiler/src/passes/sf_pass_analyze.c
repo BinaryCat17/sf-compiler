@@ -20,27 +20,6 @@ static bool check_broadcast(sf_ir_node* node, const sf_type_info* a, const sf_ty
 
 // --- Shape Resolvers ---
 
-static bool resolve_same_as_s1(sf_ir_node* node, sf_ir_node* inputs[4], sf_compiler_diag* diag) {
-    if (!inputs[0]) return false;
-    
-    // If the node (like Output) already has an explicit shape from JSON,
-    // we keep it but could validate compatibility here.
-    if (node->out_info.ndim > 0) {
-        return true;
-    }
-
-    node->out_info.ndim = inputs[0]->out_info.ndim;
-    memcpy(node->out_info.shape, inputs[0]->out_info.shape, sizeof(int32_t) * SF_MAX_DIMS);
-    return true;
-}
-
-static bool resolve_same_as_s2(sf_ir_node* node, sf_ir_node* inputs[4], sf_compiler_diag* diag) {
-    if (!inputs[1]) return false;
-    node->out_info.ndim = inputs[1]->out_info.ndim;
-    memcpy(node->out_info.shape, inputs[1]->out_info.shape, sizeof(int32_t) * SF_MAX_DIMS);
-    return true;
-}
-
 static bool resolve_broadcast(sf_ir_node* node, sf_ir_node* inputs[4], sf_compiler_diag* diag) {
     if (!inputs[0] || !inputs[1]) return false;
     if (inputs[2]) {
@@ -51,72 +30,101 @@ static bool resolve_broadcast(sf_ir_node* node, sf_ir_node* inputs[4], sf_compil
     return check_broadcast(node, &inputs[0]->out_info, &inputs[1]->out_info, &node->out_info, diag);
 }
 
-static bool resolve_matmul(sf_ir_node* node, sf_ir_node* inputs[4], sf_compiler_diag* diag) {
+static bool resolve_join(sf_ir_node* node, sf_ir_node* inputs[4], sf_compiler_diag* diag) {
     if (!inputs[0] || !inputs[1]) return false;
-    node->out_info.ndim = 2;
-    node->out_info.shape[0] = inputs[0]->out_info.shape[inputs[0]->out_info.ndim - 2];
-    node->out_info.shape[1] = inputs[1]->out_info.shape[inputs[1]->out_info.ndim - 1];
-    return true;
-}
-
-static bool resolve_dot(sf_ir_node* node, sf_ir_node* inputs[4], sf_compiler_diag* diag) {
-    if (!inputs[0]) return false;
-    node->out_info.ndim = inputs[0]->out_info.ndim > 0 ? inputs[0]->out_info.ndim - 1 : 0;
-    for (int k = 0; k < node->out_info.ndim; ++k) node->out_info.shape[k] = inputs[0]->out_info.shape[k];
-    return true;
-}
-
-static bool resolve_scalar(sf_ir_node* node, sf_ir_node* inputs[4], sf_compiler_diag* diag) {
-    node->out_info.ndim = 0;
-    node->out_info.shape[0] = 1;
-    return true;
-}
-
-static bool resolve_range(sf_ir_node* node, sf_ir_node* inputs[4], sf_compiler_diag* diag) {
-    if (!inputs[0]) return false;
-    node->out_info.ndim = 1;
-    node->out_info.shape[0] = 1;
+    node->out_info.ndim = inputs[0]->out_info.ndim > 0 ? inputs[0]->out_info.ndim : 1;
+    memcpy(node->out_info.shape, inputs[0]->out_info.shape, sizeof(int32_t) * SF_MAX_DIMS);
     
-    if (inputs[0]->type == SF_NODE_CONST && inputs[0]->const_data) {
-        f32 val = 0;
-        if (inputs[0]->const_info.dtype == SF_DTYPE_F32) val = *(f32*)inputs[0]->const_data;
-        else if (inputs[0]->const_info.dtype == SF_DTYPE_I32) val = (f32)*(i32*)inputs[0]->const_data;
-        node->out_info.shape[0] = (i32)val;
+    int32_t total = 0;
+    for (int k = 0; k < 4; ++k) {
+        if (!inputs[k]) continue;
+        int32_t d = (inputs[k]->out_info.ndim == 0) ? 1 : inputs[k]->out_info.shape[inputs[k]->out_info.ndim - 1];
+        total += d;
+    }
+    node->out_info.shape[node->out_info.ndim - 1] = total;
+    return true;
+}
+
+static bool resolve_reshape(sf_ir_node* node, sf_ir_node* inputs[4], sf_compiler_diag* diag) {
+    // Fallback if not constant
+    if (!inputs[1] || inputs[1]->type != SF_NODE_CONST) {
+        node->out_info.ndim = inputs[0]->out_info.ndim;
+        memcpy(node->out_info.shape, inputs[0]->out_info.shape, sizeof(int32_t) * SF_MAX_DIMS);
+        return true;
+    }
+
+    node->out_info.ndim = (uint8_t)inputs[1]->const_info.shape[0];
+    for (int k = 0; k < node->out_info.ndim; ++k) {
+        if (inputs[1]->const_info.dtype == SF_DTYPE_F32)
+            node->out_info.shape[k] = (int32_t)((f32*)inputs[1]->const_data)[k];
+        else
+            node->out_info.shape[k] = ((i32*)inputs[1]->const_data)[k];
     }
     return true;
 }
 
+static bool resolve_slice(sf_ir_node* node, sf_ir_node* inputs[4], sf_compiler_diag* diag) {
+    if (!inputs[0]) return false;
+    node->out_info.ndim = inputs[0]->out_info.ndim;
+    memcpy(node->out_info.shape, inputs[0]->out_info.shape, sizeof(int32_t) * SF_MAX_DIMS);
+    return true;
+}
+
+static bool resolve_gather(sf_ir_node* node, sf_ir_node* inputs[4], sf_compiler_diag* diag) {
+    if (!inputs[1]) return false;
+    node->out_info.ndim = inputs[1]->out_info.ndim;
+    memcpy(node->out_info.shape, inputs[1]->out_info.shape, sizeof(int32_t) * SF_MAX_DIMS);
+    return true;
+}
+
+extern const sf_shape_resolver SF_GENERATED_SHAPE_RESOLVERS[];
+
 static const sf_shape_resolver SHAPE_RESOLVERS[SF_SHAPE_COUNT] = {
-    [SF_SHAPE_SAME_AS_S1] = resolve_same_as_s1,
-    [SF_SHAPE_SAME_AS_S2] = resolve_same_as_s2,
     [SF_SHAPE_BROADCAST]  = resolve_broadcast,
-    [SF_SHAPE_MATMUL]     = resolve_matmul,
-    [SF_SHAPE_DOT]        = resolve_dot,
-    [SF_SHAPE_SCALAR]     = resolve_scalar,
-    [SF_SHAPE_RANGE]      = resolve_range
+    [SF_SHAPE_JOIN]       = resolve_join,
+    [SF_SHAPE_RESHAPE]    = resolve_reshape,
+    [SF_SHAPE_SLICE]      = resolve_slice,
+    [SF_SHAPE_GATHER]     = resolve_gather
 };
 
 bool sf_pass_analyze(sf_pass_ctx* ctx, sf_compiler_diag* diag) {
     sf_graph_ir* ir = ctx->ir;
+    
+    // 1. First pass: Initialize all nodes (including metadata nodes like INPUT/OUTPUT)
+    for (size_t i = 0; i < ir->node_count; ++i) {
+        sf_ir_node* node = &ir->nodes[i];
+        if (node->type == SF_NODE_UNKNOWN) continue;
+        sf_shape_calc_strides(&node->out_info);
+    }
+
+    // 2. Second pass: Resolve shapes and dtypes for computational nodes in topological order
     sf_ir_node** sorted_nodes = ctx->sorted_nodes;
     size_t count = ctx->sorted_count;
 
+    bool success = true;
     for (size_t i = 0; i < count; ++i) {
         sf_ir_node* node = sorted_nodes[i];
-        if (node->type == SF_NODE_UNKNOWN) continue;
-
         const sf_op_metadata* meta = &SF_OP_METADATA[node->type];
+        
         sf_ir_node* inputs[4] = {0};
         for (u8 k = 0; k < 4; ++k) {
-            if (meta->ports[k]) inputs[k] = sf_ir_find_input_by_name(ir, (u32)(node - ir->nodes), meta->ports[k]);
+            if (meta->ports[k]) inputs[k] = find_input_source(ir, (u32)(node - ir->nodes), k);
         }
 
-        // 1. Resolve Shape
-        if (meta->shape_rule < SF_SHAPE_COUNT && SHAPE_RESOLVERS[meta->shape_rule]) {
-            SHAPE_RESOLVERS[meta->shape_rule](node, inputs, diag);
+        // Resolve Shape: Try generated first, then fallback to manual
+        bool resolved = false;
+        if (meta->shape_rule < SF_SHAPE_COUNT) {
+            if (SF_GENERATED_SHAPE_RESOLVERS[meta->shape_rule]) {
+                if (!SF_GENERATED_SHAPE_RESOLVERS[meta->shape_rule](node, inputs, diag)) success = false;
+                resolved = true;
+            } else if (SHAPE_RESOLVERS[meta->shape_rule]) {
+                if (!SHAPE_RESOLVERS[meta->shape_rule](node, inputs, diag)) success = false;
+                resolved = true;
+            }
         }
+        (void)resolved;
 
-        // 2. Resolve DType
+        // Resolve DType
         static const sf_dtype RULE_TO_DTYPE[] = {
             [SF_OUT_FORCE_F32] = SF_DTYPE_F32,
             [SF_OUT_FORCE_U8]  = SF_DTYPE_U8,
@@ -127,38 +135,25 @@ bool sf_pass_analyze(sf_pass_ctx* ctx, sf_compiler_diag* diag) {
             node->out_info.dtype = RULE_TO_DTYPE[meta->out_rule];
         } else if (meta->out_rule == SF_OUT_SAME_AS_INPUT && inputs[0]) {
             node->out_info.dtype = inputs[0]->out_info.dtype;
-        } else if (meta->out_rule == SF_OUT_SAME_AS_INPUT_2 && inputs[1]) {
-            node->out_info.dtype = inputs[1]->out_info.dtype;
         }
 
         if (node->out_info.dtype == SF_DTYPE_UNKNOWN) node->out_info.dtype = SF_DTYPE_F32;
 
-        // 3. Domain & Spatial Analysis
+        // Domain Analysis
         u32 dom_idx = node->domain_node_idx;
-        if (dom_idx == UINT32_MAX) {
-            // Find default domain (first output) if none assigned
-            for (u32 j = 0; j < (u32)ir->node_count; ++j) {
-                if (ir->nodes[j].type == SF_NODE_OUTPUT) { dom_idx = j; break; }
-            }
-        }
-        
         size_t task_cnt = 1;
         if (dom_idx != UINT32_MAX) {
             task_cnt = sf_shape_calc_count(ir->nodes[dom_idx].out_info.shape, ir->nodes[dom_idx].out_info.ndim);
         }
         
         bool is_generator = (meta->flags & SF_OP_FLAG_GENERATOR);
-        bool has_spatial_input = false;
-        for (int k = 0; k < 4; ++k) if (inputs[k] && inputs[k]->is_spatial) has_spatial_input = true;
+        node->is_spatial = (task_cnt > 1) || is_generator;
         
-        node->is_spatial = (task_cnt > 1) || is_generator || has_spatial_input;
-
-        // Generators usually follow the domain, unless they define it (like Range)
         if (is_generator && dom_idx != UINT32_MAX && !(meta->flags & SF_OP_FLAG_FORCE_DOM)) {
             node->out_info = ir->nodes[dom_idx].out_info;
         }
         
         sf_shape_calc_strides(&node->out_info);
     }
-    return true;
+    return success;
 }

@@ -61,7 +61,7 @@ sf_program* sf_compile(sf_graph_ir* ir, sf_arena* arena, sf_compiler_diag* diag)
         const sf_pipeline_pass_def* pass = &SF_COMPILER_PIPELINE[i];
         SF_LOG_DEBUG("Running pass: %s", pass->name);
         
-        if (!pass->func(&ctx, diag)) {
+        if (!pass->func(&ctx, diag) || (diag && diag->has_error)) {
             SF_LOG_ERROR("Pass '%s' failed", pass->name);
             return NULL;
         }

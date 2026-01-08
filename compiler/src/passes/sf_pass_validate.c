@@ -28,6 +28,9 @@ bool sf_pass_validate(sf_pass_ctx* ctx, sf_compiler_diag* diag) {
         for (u8 k = 0; k < meta->arity; ++k) {
             inputs[k] = sf_ir_find_input_by_name(ir, node_idx, meta->ports[k]);
             if (!inputs[k]) {
+                // Special case: Join allows 2 or 3 inputs (c and d are optional)
+                if (node->type == SF_NODE_JOIN && k >= 2) continue;
+
                 SF_REPORT_NODE(diag, node, "Validation Error: Missing required input port '%s' for node '%s' (%s)", 
                     meta->ports[k], node->id, meta->name);
                 success = false;

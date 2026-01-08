@@ -5,6 +5,30 @@
 
 // sf_ir_parse_window_settings is now automatically generated in sf_manifest_gen.c
 
+sf_node_type sf_compiler_get_node_type(const char* type_str) {
+    if (!type_str) return SF_NODE_UNKNOWN;
+    
+    // 1. Check dynamic aliases from compiler_spec.json
+    for (size_t i = 0; i < SF_COMPILER_ALIAS_COUNT; ++i) {
+        if (strcmp(type_str, SF_COMPILER_ALIASES[i].from) == 0) return SF_COMPILER_ALIASES[i].to;
+    }
+
+    // 2. Check built-in node names
+    for (int i = 1; i < SF_NODE_COUNT; ++i) {
+        if (strcmp(type_str, SF_OP_METADATA[i].name) == 0) return (sf_node_type)i;
+    }
+    return SF_NODE_UNKNOWN;
+}
+
+u32 sf_compiler_get_port_index(sf_node_type type, const char* port_name) {
+    if (!port_name || type >= SF_NODE_COUNT) return 0;
+    const sf_op_metadata* meta = &SF_OP_METADATA[type];
+    for (u32 i = 0; i < 4; ++i) {
+        if (meta->ports[i] && strcmp(meta->ports[i], port_name) == 0) return i;
+    }
+    return 0;
+}
+
 // --- Helper: Find Input Source ---
 sf_ir_node* find_input_source(sf_graph_ir* ir, u32 dst_node_idx, u32 dst_port) {
     for (size_t i = 0; i < ir->link_count; ++i) {
@@ -49,7 +73,21 @@ static bool visit_node(sort_ctx* ctx, u32 node_idx) {
     }
 
     ctx->visited[node_idx] = 2;
-    ctx->sorted_nodes[ctx->count++] = &ctx->ir->nodes[node_idx];
+    
+    // The Filter: only include nodes that generate actual bytecode instructions.
+    // Everything else (INPUT, OUTPUT, CONST, COPY, CALL, UNKNOWN) is metadata.
+    sf_ir_node* node = &ctx->ir->nodes[node_idx];
+    const sf_op_metadata* meta = &SF_OP_METADATA[node->type];
+    sf_node_type type = node->type;
+    
+    bool is_compute = (meta->category == SF_OP_CAT_ATOMIC || 
+                       meta->category == SF_OP_CAT_REDUCTION || 
+                       meta->category == SF_OP_CAT_ACCEL || 
+                       (meta->category == SF_OP_CAT_MEMORY && type != SF_NODE_SLICE && type != SF_NODE_RESHAPE));
+
+    if (is_compute) {
+        ctx->sorted_nodes[ctx->count++] = node;
+    }
     return true;
 }
 

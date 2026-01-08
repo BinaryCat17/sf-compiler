@@ -6,32 +6,6 @@
 #include <string.h>
 #include <stdio.h>
 
-// --- Metadata Lookups ---
-
-static sf_node_type get_node_type(const char* type_str) {
-    if (!type_str) return SF_NODE_UNKNOWN;
-    
-    // 1. Check dynamic aliases from compiler_spec.json
-    for (size_t i = 0; i < SF_COMPILER_ALIAS_COUNT; ++i) {
-        if (strcmp(type_str, SF_COMPILER_ALIASES[i].from) == 0) return SF_COMPILER_ALIASES[i].to;
-    }
-
-    // 2. Check built-in node names
-    for (int i = 1; i < SF_NODE_COUNT; ++i) {
-        if (strcmp(type_str, SF_OP_METADATA[i].name) == 0) return (sf_node_type)i;
-    }
-    return SF_NODE_UNKNOWN;
-}
-
-static u32 get_port_index(sf_node_type type, const char* port_name) {
-    if (!port_name || type >= SF_NODE_COUNT) return 0;
-    const sf_op_metadata* meta = &SF_OP_METADATA[type];
-    for (u32 i = 0; i < 4; ++i) {
-        if (meta->ports[i] && strcmp(meta->ports[i], port_name) == 0) return i;
-    }
-    return 0;
-}
-
 // --- Helpers ---
 
 static const sf_lowering_rule* find_lowering_rule(sf_node_type type) {
@@ -50,18 +24,16 @@ static void parse_const_tensor(const sf_json_value* val, const sf_json_value* no
     uint8_t ndim = 0;
 
     const sf_json_value* meta = sf_json_get_field(node_data, "meta");
-    if (meta) {
-        const sf_json_value* j_dtype = sf_json_get_field(meta, "dtype");
-        if (j_dtype) dtype = sf_dtype_from_str(j_dtype->as.s);
+    const sf_json_value* j_dtype = meta ? sf_json_get_field(meta, "dtype") : sf_json_get_field(node_data, "dtype");
+    if (j_dtype) dtype = sf_dtype_from_str(j_dtype->as.s);
 
-        const sf_json_value* j_shape = sf_json_get_field(meta, "shape");
-        if (j_shape && j_shape->type == SF_JSON_VAL_ARRAY) {
-            ndim = (uint8_t)j_shape->as.array.count;
-            for (int i = 0; i < ndim; ++i) {
-                shape[i] = (int32_t)j_shape->as.array.items[i].as.n;
-            }
+    const sf_json_value* j_shape = meta ? sf_json_get_field(meta, "shape") : sf_json_get_field(node_data, "shape");
+    if (j_shape && j_shape->type == SF_JSON_VAL_ARRAY) {
+        ndim = (uint8_t)j_shape->as.array.count;
+        for (int i = 0; i < ndim; ++i) {
+            shape[i] = (int32_t)j_shape->as.array.items[i].as.n;
         }
-    } else if (val->type == SF_JSON_VAL_ARRAY) {
+    } else if (!meta && val->type == SF_JSON_VAL_ARRAY) {
         ndim = 1;
         shape[0] = (int32_t)val->as.array.count;
     }
@@ -99,7 +71,7 @@ static bool is_field_allowed(sf_node_type type, const char* key) {
         const char* allowed[] = {"axis", "dtype", NULL};
         for (int i = 0; allowed[i]; ++i) if (strcmp(key, allowed[i]) == 0) return true;
     } else if (type == SF_NODE_CONST) {
-        const char* allowed[] = {"value", "meta", NULL};
+        const char* allowed[] = {"value", "meta", "dtype", "shape", NULL};
         for (int i = 0; allowed[i]; ++i) if (strcmp(key, allowed[i]) == 0) return true;
     } else if (type == SF_NODE_CALL) {
         const char* allowed[] = {"path", NULL};
@@ -252,7 +224,7 @@ bool sf_pass_lower(sf_ast_graph* ast, sf_graph_ir* out_ir, sf_arena* arena, cons
         dst->id = sf_arena_strdup(arena, src->id);
         sf_map_put(&map, dst->id, i);
 
-        dst->type = get_node_type(src->type);
+        dst->type = sf_compiler_get_node_type(src->type);
         if (dst->type == SF_NODE_UNKNOWN) {
             // Explicit Import System: Search for <type>.json in imports
             bool found = false;
@@ -335,7 +307,7 @@ bool sf_pass_lower(sf_ast_graph* ast, sf_graph_ir* out_ir, sf_arena* arena, cons
         sf_ir_node* src_node = &out_ir->nodes[l_dst->src_node_idx];
         l_dst->src_port_name = l_src->src_port ? sf_arena_strdup(arena, l_src->src_port) : "out";
         if (src_node->type != SF_NODE_CALL) {
-            l_dst->src_port = get_port_index(src_node->type, l_src->src_port);
+            l_dst->src_port = sf_compiler_get_port_index(src_node->type, l_src->src_port);
         }
 
         // Dest
@@ -347,7 +319,7 @@ bool sf_pass_lower(sf_ast_graph* ast, sf_graph_ir* out_ir, sf_arena* arena, cons
         sf_ir_node* dst_node = &out_ir->nodes[l_dst->dst_node_idx];
         l_dst->dst_port_name = l_src->dst_port ? sf_arena_strdup(arena, l_src->dst_port) : "in";
         if (dst_node->type != SF_NODE_CALL) {
-            l_dst->dst_port = get_port_index(dst_node->type, l_src->dst_port);
+            l_dst->dst_port = sf_compiler_get_port_index(dst_node->type, l_src->dst_port);
         }
     }
 

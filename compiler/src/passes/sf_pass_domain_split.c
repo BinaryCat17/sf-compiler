@@ -11,11 +11,27 @@ static bool shapes_equal(const sf_type_info* a, const sf_type_info* b) {
     return true;
 }
 
+static bool can_broadcast_to(const sf_type_info* src, const sf_type_info* dst) {
+    if (src->ndim == 0) return true; // Scalar always broadcasts
+    if (src->ndim > dst->ndim) return false;
+    
+    for (int i = 0; i < src->ndim; ++i) {
+        int32_t s = src->shape[src->ndim - 1 - i];
+        int32_t d = dst->shape[dst->ndim - 1 - i];
+        if (s != d && s != 1) return false;
+    }
+    return true;
+}
+
 static void mark_domain(sf_graph_ir* ir, u32 node_idx, u32 domain_idx) {
     sf_ir_node* node = &ir->nodes[node_idx];
+    const sf_op_metadata* meta = &SF_OP_METADATA[node->type];
     
-    // Stop if shapes are not equal. This node should belong to its own domain.
-    if (!shapes_equal(&node->out_info, &ir->nodes[domain_idx].out_info)) {
+    // Reductions are domain boundaries - they define their own domain based on input
+    if (meta->category == SF_OP_CAT_REDUCTION) return;
+
+    // Stop if shapes are fundamentally incompatible
+    if (!can_broadcast_to(&node->out_info, &ir->nodes[domain_idx].out_info)) {
         return;
     }
 

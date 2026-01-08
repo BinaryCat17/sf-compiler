@@ -49,7 +49,12 @@ bool sf_pass_lower(sf_ast_graph* ast, sf_graph_ir* out_ir, sf_arena* arena, cons
 // --- Pass: Inline Subgraphs ---
 // Recursively expands SF_NODE_CALL into flattened nodes.
 // Handles port remapping and unique ID generation.
-bool sf_pass_inline(sf_graph_ir* ir, sf_arena* arena, sf_compiler_diag* diag);
+bool sf_pass_inline(sf_pass_ctx* ctx, sf_compiler_diag* diag);
+bool sf_pass_inline_wrapper(sf_pass_ctx* ctx, sf_compiler_diag* diag);
+
+// --- Pass: Simplify ---
+// Short-circuits COPY nodes and removes redundant links.
+bool sf_pass_simplify(sf_pass_ctx* ctx, sf_compiler_diag* diag);
 
 // --- Pass Components (Internal) ---
 bool sf_pass_decompose(sf_pass_ctx* ctx, sf_compiler_diag* diag);
