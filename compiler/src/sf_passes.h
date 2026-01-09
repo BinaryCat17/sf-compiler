@@ -21,15 +21,24 @@
 // - Validates Data schemas
 // - Resolves Port Names to Indices
 
-typedef struct {
+typedef struct sf_pass_ctx {
     sf_graph_ir* ir;
     sf_arena* arena;
-    const char* base_path; // For resolving sub-graphs
+    const char* base_path;
     
-    // Analysis results shared between passes
+    // Results of topological sort
     sf_ir_node** sorted_nodes;
     size_t sorted_count;
+
+    // Results of Task Planning
+    sf_task* tasks;
+    u32 task_count;
+    sf_bin_task_binding* bindings;
+    u32 binding_count;
 } sf_pass_ctx;
+
+bool sf_pass_sort(sf_pass_ctx* ctx, sf_compiler_diag* diag);
+bool sf_pass_task_plan(sf_pass_ctx* ctx, sf_compiler_diag* diag);
 
 typedef bool (*sf_pass_fn)(sf_pass_ctx* ctx, sf_compiler_diag* diag);
 
@@ -61,6 +70,7 @@ bool sf_pass_decompose(sf_pass_ctx* ctx, sf_compiler_diag* diag);
 bool sf_pass_sort(sf_pass_ctx* ctx, sf_compiler_diag* diag);
 bool sf_pass_analyze(sf_pass_ctx* ctx, sf_compiler_diag* diag);
 bool sf_pass_validate(sf_pass_ctx* ctx, sf_compiler_diag* diag);
+bool sf_pass_validate_gen(sf_pass_ctx* ctx, sf_compiler_diag* diag);
 bool sf_pass_domain_split(sf_pass_ctx* ctx, sf_compiler_diag* diag);
 bool sf_pass_fuse(sf_pass_ctx* ctx, sf_compiler_diag* diag);
 bool sf_pass_liveness(sf_pass_ctx* ctx, sf_compiler_diag* diag);

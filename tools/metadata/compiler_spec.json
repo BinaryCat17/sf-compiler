@@ -13,13 +13,15 @@
     { "id": "domain",    "name": "Domain Splitting", "func": "sf_pass_domain_split" },
     { "id": "analyze",   "name": "Static Analysis",  "func": "sf_pass_analyze" },
     { "id": "validate",  "name": "Validation",    "func": "sf_pass_validate" },
-    { "id": "liveness",  "name": "Liveness Analysis", "func": "sf_pass_liveness" }
+    { "id": "liveness",  "name": "Liveness Analysis", "func": "sf_pass_liveness" },
+    { "id": "task_plan", "name": "Task Planning", "func": "sf_pass_task_plan" }
   ],
   "aliases": [
     { "from": "Index", "to": "INDEX_X", "reason": "Default index axis" },
     { "from": "Range", "to": "RANGE", "reason": "Sequental generator" },
     { "from": "Sum",   "to": "REDUCE_SUM", "reason": "Short name for reduction" },
-    { "from": "Mean",  "to": "MEAN", "reason": "Short name for reduction" }
+    { "from": "Mean",  "to": "MEAN", "reason": "Short name for reduction" },
+    { "from": "Square", "to": "SQUARE", "reason": "Math alias" }
   ],
   "fusion_rules": [
     {
@@ -44,6 +46,14 @@
     }
   ],
   "lowering_rules": [
+    {
+      "id": "DECOMPOSE_SQUARE",
+      "target": "SQUARE",
+      "replace_with_subgraph": [
+        { "id": "mul", "type": "MUL", "inputs": { "a": "in", "b": "in" } }
+      ],
+      "output": "mul"
+    },
     {
       "id": "DECOMPOSE_MEAN",
       "target": "MEAN",

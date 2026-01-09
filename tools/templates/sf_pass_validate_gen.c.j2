@@ -1,0 +1,101 @@
+#include <sionflow/compiler/sf_compiler.h>
+#include "../../compiler/src/sf_passes.h"
+#include "../../compiler/src/sf_compiler_internal.h"
+#include <sionflow/base/sf_log.h>
+#include <sionflow/base/sf_shape.h>
+#include <sionflow/isa/sf_opcodes.h>
+#include <string.h>
+
+/**
+ * SionFlow Compiler Validation Pass (Auto-generated)
+ * Automatically generated from isa.json. DO NOT EDIT.
+ */
+
+typedef bool (*sf_node_validator)(sf_graph_ir* ir, sf_ir_node* node, sf_ir_node* inputs[4], sf_compiler_diag* diag);
+
+static bool check_broadcast_compat(const sf_type_info* a, const sf_type_info* b) {
+    sf_type_info dummy;
+    return sf_shape_broadcast(a, b, &dummy);
+}
+
+{% for node in nodes %}
+{% if node.opcode != "NOOP" or node.id in ["INPUT", "OUTPUT", "CONST", "CALL"] %}
+static bool validate_{{ node.id }}(sf_graph_ir* ir, sf_ir_node* node, sf_ir_node* inputs[4], sf_compiler_diag* diag) {
+    (void)ir; (void)inputs;
+    bool success = true;
+
+    {% for input in node.inputs %}
+    {% if not input.optional %}
+    if (!inputs[{{ loop.index0 }}]) {
+        SF_REPORT_NODE(diag, node, "Validation Error: Missing required input port '{{ input.name }}'");
+        success = false;
+    }
+    {% endif %}
+    if (inputs[{{ loop.index0 }}]) {
+        uint32_t type_bit = (1 << inputs[{{ loop.index0 }}]->out_info.dtype);
+        uint32_t mask = {{ mask_bitfields[input.mask|default('all')] }};
+        if (!(type_bit & mask)) {
+            SF_REPORT_NODE(diag, node, "Type Mismatch: Input '{{ input.name }}' has invalid dtype");
+            success = false;
+        }
+    }
+    {% endfor %}
+
+    {% if node.min_rank is defined %}
+    if (inputs[0] && inputs[0]->out_info.ndim < {{ node.min_rank }}) {
+        SF_REPORT_NODE(diag, node, "Rank Error: Expected minimum rank {{ node.min_rank }}, got %d", inputs[0]->out_info.ndim);
+        success = false;
+    }
+    {% endif %}
+
+    {% for asrt in node.assertions %}
+    {% if asrt.type == "MATCH_DIM" %}
+    if (inputs[{{ asrt.p0 }}] && inputs[{{ asrt.p1 }}]) {
+        int axis0 = ({{ asrt.a0 }} < 0) ? (inputs[{{ asrt.p0 }}]->out_info.ndim + {{ asrt.a0 }}) : {{ asrt.a0 }};
+        int axis1 = ({{ asrt.a1 }} < 0) ? (inputs[{{ asrt.p1 }}]->out_info.ndim + {{ asrt.a1 }}) : {{ asrt.a1 }};
+        if (axis0 >= 0 && axis1 >= 0 && inputs[{{ asrt.p0 }}]->out_info.shape[axis0] != inputs[{{ asrt.p1 }}]->out_info.shape[axis1]) {
+            SF_REPORT_NODE(diag, node, "Validation Error: {{ asrt.msg|default('Dimension mismatch') }} (%d vs %d)", 
+                inputs[{{ asrt.p0 }}]->out_info.shape[axis0], inputs[{{ asrt.p1 }}]->out_info.shape[axis1]);
+            success = false;
+        }
+    }
+    {% elif asrt.type == "BROADCAST_COMPATIBLE" %}
+    if (inputs[0] && inputs[1] && !check_broadcast_compat(&inputs[0]->out_info, &inputs[1]->out_info)) {
+        SF_REPORT_NODE(diag, node, "Shape Mismatch: Inputs are not broadcast-compatible");
+        success = false;
+    }
+    {% endif %}
+    {% endfor %}
+
+    return success;
+}
+{% endif %}
+{% endfor %}
+
+bool sf_pass_validate_gen(sf_pass_ctx* ctx, sf_compiler_diag* diag) {
+    sf_graph_ir* ir = ctx->ir;
+    sf_ir_node** sorted_nodes = ctx->sorted_nodes;
+    size_t count = ctx->sorted_count;
+    bool success = true;
+
+    for (size_t i = 0; i < count; ++i) {
+        sf_ir_node* node = sorted_nodes[i];
+        if (node->type == SF_NODE_UNKNOWN) continue;
+
+        sf_ir_node* inputs[4] = {0};
+        const sf_op_metadata* meta = &SF_OP_METADATA[node->type];
+        for (u8 k = 0; k < 4; ++k) {
+            if (meta->ports[k]) inputs[k] = find_input_source(ir, (u32)(node - ir->nodes), k);
+        }
+
+        switch(node->type) {
+            {% for node in nodes %}
+            {% if node.opcode != "NOOP" or node.id in ["INPUT", "OUTPUT", "CONST", "CALL"] %}
+            case SF_NODE_{{ node.id }}: if (!validate_{{ node.id }}(ir, node, inputs, diag)) success = false; break;
+            {% endif %}
+            {% endfor %}
+            default: break;
+        }
+    }
+    return success;
+}

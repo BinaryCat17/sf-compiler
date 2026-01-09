@@ -13,6 +13,7 @@ u32 sf_compiler_get_port_index(sf_node_type type, const char* port_name);
 
 // --- Internal: CodeGen ---
 // Emits instructions into the program
-bool sf_codegen_emit(sf_program* prog, sf_graph_ir* ir, sf_ir_node** sorted_nodes, size_t sorted_count, sf_arena* arena);
+typedef struct sf_pass_ctx sf_pass_ctx;
+bool sf_codegen_emit(sf_program* prog, sf_pass_ctx* ctx, sf_arena* arena);
 
 #endif // SF_COMPILER_INTERNAL_H

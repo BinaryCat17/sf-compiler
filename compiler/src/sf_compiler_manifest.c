@@ -1,4 +1,5 @@
 #include <sionflow/compiler/sf_compiler.h>
+#include "sf_passes.h"
 #include "sf_compiler_internal.h"
 #include <sionflow/base/sf_json.h>
 #include <sionflow/base/sf_utils.h>

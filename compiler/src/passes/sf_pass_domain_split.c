@@ -24,27 +24,16 @@ static bool can_broadcast_to(const sf_type_info* src, const sf_type_info* dst) {
 }
 
 static void mark_domain(sf_graph_ir* ir, u32 node_idx, u32 domain_idx) {
+    if (node_idx == UINT32_MAX || ir->nodes[node_idx].domain_node_idx != UINT32_MAX) return;
+
+    ir->nodes[node_idx].domain_node_idx = domain_idx;
+
+    // Recurse to inputs using O(1) connectivity
     sf_ir_node* node = &ir->nodes[node_idx];
-    const sf_op_metadata* meta = &SF_OP_METADATA[node->type];
-    
-    // Reductions are domain boundaries - they define their own domain based on input
-    if (meta->category == SF_OP_CAT_REDUCTION) return;
-
-    // Stop if shapes are fundamentally incompatible
-    if (!can_broadcast_to(&node->out_info, &ir->nodes[domain_idx].out_info)) {
-        return;
-    }
-
-    if (node->domain_node_idx != UINT32_MAX) {
-        return;
-    }
-
-    node->domain_node_idx = domain_idx;
-
-    // Recurse to inputs
-    for (size_t i = 0; i < ir->link_count; ++i) {
-        if (ir->links[i].dst_node_idx == node_idx) {
-            mark_domain(ir, ir->links[i].src_node_idx, domain_idx);
+    for (int p = 0; p < 4; ++p) {
+        u32 src_idx = node->inputs[p].src_node_idx;
+        if (src_idx != UINT32_MAX) {
+            mark_domain(ir, src_idx, domain_idx);
         }
     }
 }

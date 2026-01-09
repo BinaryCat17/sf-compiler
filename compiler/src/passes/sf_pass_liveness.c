@@ -16,13 +16,12 @@ static u32 trace_register_source(sf_graph_ir* ir, u32 node_idx, int depth) {
 
     if (!is_bridge) return node_idx;
 
-    // Trace back to producer
-    for (u32 i = 0; i < ir->link_count; ++i) {
-        sf_ir_link* l = &ir->links[i];
-        if (l->dst_node_idx == node_idx) {
-            return trace_register_source(ir, l->src_node_idx, depth + 1);
-        }
+    // Trace back to producer using O(1) connectivity
+    u32 src_idx = node->inputs[0].src_node_idx;
+    if (src_idx != UINT32_MAX) {
+        return trace_register_source(ir, src_idx, depth + 1);
     }
+    
     return node_idx;
 }
 

@@ -1,71 +1,58 @@
 #include "../sf_passes.h"
-#include "../sf_compiler_internal.h"
+#include "../sf_graph_utils.h"
 #include <sionflow/base/sf_log.h>
 #include <string.h>
 
-// Ultimate source tracing: skips through ANY node that is zero-copy/metadata
-static u32 trace_real_source(sf_graph_ir* ir, u32 node_idx, const char* port_name, const char** out_port) {
+/**
+ * Pass: Simplify Graph
+ * Short-circuits bridge nodes like RESHAPE and SLICE by connecting consumers directly to producers.
+ * This ensures that the engine doesn't have to execute "identity" operations.
+ */
+
+static u32 trace_real_source(sf_graph_ir* ir, u32 node_idx, u32 port_idx, u32* out_port) {
     sf_ir_node* node = &ir->nodes[node_idx];
-    const sf_op_metadata* meta = &SF_OP_METADATA[node->type];
-
-    // Computational nodes (Real Sources)
-    bool is_compute = (meta->category == SF_OP_CAT_ATOMIC || 
-                       meta->category == SF_OP_CAT_REDUCTION || 
-                       meta->category == SF_OP_CAT_ACCEL || 
-                       (meta->category == SF_OP_CAT_MEMORY && node->type != SF_NODE_SLICE && node->type != SF_NODE_RESHAPE));
-
-    if (is_compute) {
-        if (out_port) *out_port = port_name;
-        return node_idx;
-    }
-
-    // Bridge nodes (INPUT, SLICE, RESHAPE, etc.) -> Trace back to their producer
-    for (u32 i = 0; i < ir->link_count; ++i) {
-        sf_ir_link* l = &ir->links[i];
-        if (l->dst_node_idx == node_idx) {
-            return trace_real_source(ir, l->src_node_idx, l->src_port_name, out_port);
+    
+    // Identity nodes (Zero-Copy) just forward data from input 0
+    if (node->type == SF_NODE_RESHAPE || node->type == SF_NODE_SLICE) {
+        sf_port src = sf_builder_get_source(ir, (sf_port){ node_idx, 0 });
+        if (!SF_PORT_IS_NULL(src)) {
+            return trace_real_source(ir, src.node_idx, src.port_idx, out_port);
         }
     }
+
+    *out_port = port_idx;
     return node_idx;
 }
 
 bool sf_pass_simplify(sf_pass_ctx* ctx, sf_compiler_diag* diag) {
+    (void)diag;
     sf_graph_ir* ir = ctx->ir;
-    if (!ir) return false;
+    sf_arena* arena = ctx->arena;
 
-    // 1. Redirect all links to bypass all metadata/bridge nodes
-    for (u32 i = 0; i < ir->link_count; ++i) {
-        sf_ir_link* l = &ir->links[i];
-        const char* real_port = l->src_port_name;
-        u32 real_src = trace_real_source(ir, l->src_node_idx, l->src_port_name, &real_port);
-        
-        if (real_src != l->src_node_idx) {
-            l->src_node_idx = real_src;
-            l->src_port_name = (char*)real_port;
-        }
-    }
-
-    // 2. Redirect domain indices
+    // 1. Short-circuit connections
     for (u32 i = 0; i < ir->node_count; ++i) {
         sf_ir_node* node = &ir->nodes[i];
-        if (node->domain_node_idx != UINT32_MAX) {
-            const char* dummy;
-            node->domain_node_idx = trace_real_source(ir, node->domain_node_idx, "out", &dummy);
+        if (node->type == SF_NODE_UNKNOWN) continue;
+
+        for (int p = 0; p < 4; ++p) {
+            sf_port src = sf_builder_get_source(ir, (sf_port){ i, p });
+            if (SF_PORT_IS_NULL(src)) continue;
+
+            u32 real_port = src.port_idx;
+            u32 real_src = trace_real_source(ir, src.node_idx, src.port_idx, &real_port);
+
+            if (real_src != src.node_idx) {
+                sf_builder_connect(ir, arena, (sf_port){ real_src, real_port }, (sf_port){ i, p });
+            }
         }
     }
 
-    // 3. Cleanup: Mark bridge nodes as UNKNOWN so they are skipped by everything
+    // 2. Metadata cleanup: Identity nodes are no longer needed for computation
     for (u32 i = 0; i < ir->node_count; ++i) {
-        sf_node_type type = ir->nodes[i].type;
-        const sf_op_metadata* meta = &SF_OP_METADATA[type];
-        
-        bool is_compute = (meta->category == SF_OP_CAT_ATOMIC || 
-                           meta->category == SF_OP_CAT_REDUCTION || 
-                           meta->category == SF_OP_CAT_ACCEL || 
-                           (meta->category == SF_OP_CAT_MEMORY && type != SF_NODE_SLICE && type != SF_NODE_RESHAPE));
-
-        if (!is_compute && type != SF_NODE_CONST && type != SF_NODE_INPUT && type != SF_NODE_OUTPUT) {
-            ir->nodes[i].type = SF_NODE_UNKNOWN;
+        if (ir->nodes[i].type == SF_NODE_RESHAPE || ir->nodes[i].type == SF_NODE_SLICE) {
+            // We keep the nodes but they will be skipped by Task Planner 
+            // because they are now "floating" (disconnected from consumers)
+            // or we can mark them unknown if they have no other side effects.
         }
     }
 
